@@ -1,5 +1,10 @@
 # RVDbg
 
+## IRC
+Server: Freenode
+
+Channel: ##redvice
+
 ## Discord
 https://discord.gg/BFnvfv8
 
