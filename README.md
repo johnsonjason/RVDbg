@@ -12,3 +12,8 @@ Page Exceptions - Don't edit memory contents, they change the protection rights 
 
 Access Exceptions - This type of exception is a beta idea, it will work the same way as page exceptions, except they're for memory that's being read or written to. It sets the page meant to be read or written to as the constant **PAGE_NOACCESS**. The *CallChain* routine will then disassemble the location that's executing the read or write operation and check if it's using direct addressing, register addressing, or indirect register addressing. There will be a few sets of routines setup to handle the addressing modes. They will be labeled names like *Execute_Chunk1*. Those routines use a selected address or operation, these operations/addresses will come from the *CallChain* as they're allocated as "swaps". Swaps are copies of the data that caused an exception, the *CallChain* then executes a new chunk of memory that uses the swap memory instead of the original memory contents. If it is register addressing then it will just modify the contents of the register to the allocated memory.
 
+Screenshot of RVDbg:
+
+![alt text](https://puu.sh/xHwj6/216062a2dc.png)
+
+Enumerates through the process list, thread list of the selected process, details the exception type, memory address the exception occurred at, the return address, a breakpoint list, and the dumped contents of the 32-bit x86 registers.
