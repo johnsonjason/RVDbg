@@ -1,6 +1,8 @@
 # RVDbg
 
-## Discord
+## Contact
+\##redvice on freenode
+
 https://discord.gg/BFnvfv8
 
 ## Overview
