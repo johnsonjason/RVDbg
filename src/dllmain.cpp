@@ -111,8 +111,10 @@ DWORD WINAPI Dispatch(PVOID lpParam)
 		else if (receiver == std::string("!Exit"))
 		{
 			if (IsAEHPresent())
+			{
 				ContinueDebugger();
-			break;
+				break;
+			}
 		}
 	}
 
