@@ -1,13 +1,5 @@
 # RVDbg - WIP
 
-## IRC
-Server: Freenode
-
-Channel: ##redvice
-
-## Discord
-https://discord.gg/BFnvfv8
-
 ## Overview
 RVDbg (Red Vice Debugger) is a debugger or exception handler for Windows 32-bit PEs. It's moreso an arbitrary exception handler. Labeled arbitrary because it purposefully throws exceptions at an inputted location in the PE's memory. It first makes a hook to the routine *KiUserExceptionDispatcher* and then dumps the contents of the registers into a struct defined as **VirtualRegisters**. Then it makes a call to a routine named *CallChain* and suspends all the threads in the process with the exception of the current thread and resumes any threads assigned to the debugger's internal thread pool.
 
