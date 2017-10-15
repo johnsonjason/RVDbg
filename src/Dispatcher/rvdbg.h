@@ -6,18 +6,40 @@
 #include "..\CHooks\chooks.h"
 #include "..\Injector\injector.h"
 
-#define D_ADDRESSING 1
-#define R_ADDRESSING 2
-#define IMMEDIATE 3
 
-#define mEAX (0xA1)
-#define mEBX (0x8B + 0x1D)
-#define mECX (0x8B + 0x0D)
-#define mEDX (0x8B + 0x15)
-#define mESI (0x8B + 0x35)
-#define mEDI (0x8B + 0x3D)
-#define mEBP (0x8B + 0x2D)
-#define mESP (0x8B + 0x25)
+static VirtualRegisters r_registers;
+
+enum GPRegisters
+{
+	EAX,
+	EBX,
+	ECX,
+	EDX,
+	EDI,
+	ESI,
+	EBP,
+	ESP,
+	EIP
+};
+
+enum SSERegisters
+{
+	xmm0,
+	xmm1,
+	xmm2,
+	xmm3,
+	xmm4,
+	xmm5,
+	xmm6,
+	xmm7,
+};
+
+
+struct IMP_AT
+{
+	DWORD Size;
+	PVOID Address;
+};
 
 static BOOLEAN UseModule;
 
@@ -37,18 +59,19 @@ static PVOID Decision; // The code to jump to, what we would call the catch bloc
 static PVOID KiUserRealDispatcher; // the code to the real exception dispatcher
 static PVOID KiUser;
 
-static VirtualRegisters r_registers;
-
 static CONDITION_VARIABLE Runnable;
 static CRITICAL_SECTION RunLock;
 
+static std::vector<PVOID> Swaps;
 static HANDLE Threads[16];
-static std::vector<void*> Swaps;
 static PoolSect Sector[128];
 static PoolSect CurrentPool;
 
+
 static PVOID CallChain();
 static void SetKiUser();
+static IMP_AT GetIAT(LPCSTR ModuleName);
+static void SetImportAddressTable(const char* ModuleName);
 
 int WaitOptModule(const char* OptModuleName);
 void SetModule(BOOLEAN use);
@@ -57,13 +80,14 @@ void AttachRVDbg();
 void DetachRVDbg();
 void ContinueDebugger();
 
-void SetRegister(DWORD Register);
+void SetRegister(DWORD Register, DWORD value);
+void SetRegisterFP(DWORD Register, BOOLEAN Precision, double Value);
+VirtualRegisters GetRegisters();
 
 void SetExceptionMode(BOOLEAN lExceptionMode);
 BOOLEAN GetExceptionMode();
 DWORD GetExceptionAddress();
 PoolSect GetPool();
-VirtualRegisters GetRegisters();
 
 BOOLEAN IsAEHPresent();
 
@@ -71,5 +95,6 @@ int AssignThread(HANDLE Thread);
 void RemoveThread(HANDLE Thread);
 
 PoolSect* GetSector();
+int GetSectorSize();
 
 #endif
