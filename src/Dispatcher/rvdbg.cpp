@@ -2,6 +2,8 @@
 #include "rvdbg.h"
 
 BOOLEAN tDSend;
+CRITICAL_SECTION repr;
+CONDITION_VARIABLE reprcondition;
 
 static void HandleSSE()
 {
