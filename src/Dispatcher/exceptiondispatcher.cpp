@@ -1,3 +1,4 @@
+#include "stdafx.h"
 #include "exceptiondispatcher.h"
 
 void RaiseILGLAccessViolation(BYTE* ptr, BYTE save, BOOLEAN on)
@@ -126,38 +127,19 @@ void LockSector(PoolSect sector[], size_t index)
 	sector[index].IsAEHPresent = FALSE;
 }
 
-DWORD GetExceptionThreadId(PoolSect segment)
-{
-	return GetThreadId(segment.Thread);
-}
-
-void SuspendException(PoolSect segment)
-{
-	SuspendThread(segment.Thread);
-	segment.IsAEHPresent = FALSE;
-	segment.Used = TRUE;
-}
-
-void ContinueException(PoolSect segment)
-{
-	segment.IsAEHPresent = TRUE;
-	segment.Used = TRUE;
-	ResumeThread(segment.Thread);
-}
-
-size_t AccessQuery(DWORD AccessException)
+DWORD SwapAccess(DWORD AccessException, DWORD Test)
 {
 	MEMORY_BASIC_INFORMATION Query;
-	VirtualQuery((LPCVOID)AccessException, &Query, sizeof(Query));
+	VirtualQuery((LPCVOID)Test, &Query, sizeof(Query));
 
 	if (AccessException >= (DWORD)Query.BaseAddress && AccessException <= ((DWORD)Query.BaseAddress + Query.RegionSize))
 	{
 		DWORD OldProtect;
-		void* SwapMemory = calloc(1, 16);
+		void* SwapMemory = calloc(1, 32);
 		VirtualProtect((LPVOID)AccessException, 1, PAGE_READONLY, &OldProtect);
-		memcpy(SwapMemory, (const void*)AccessException, 16);
+		memcpy(SwapMemory, (void*)AccessException, 32);
 		VirtualProtect((LPVOID)AccessException, 1, OldProtect, &OldProtect);
-		return (size_t)SwapMemory;
+		return (DWORD)SwapMemory;
 	}
 	else
 		return NULL;
@@ -168,6 +150,7 @@ void AddException(PoolSect sector[], size_t index, BOOLEAN Type, DWORD Exception
 	sector[index].ExceptionAddress = ExceptionAddress;
 	sector[index].SaveCode = *(DWORD*)ExceptionAddress;
 	sector[index].ExceptionType = Type;
+	sector[index].Index = index;
 	LockSector(sector, index);
 
 	switch (Type)
