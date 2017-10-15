@@ -53,7 +53,6 @@ static BOOLEAN Debugger;
 extern BOOLEAN tDSend;
 
 static BOOLEAN ExceptionMode;
-static BOOLEAN ChunkExecutable;
 
 static PVOID Decision; // The code to jump to, what we would call the catch block
 static PVOID KiUserRealDispatcher; // the code to the real exception dispatcher
@@ -61,6 +60,9 @@ static PVOID KiUser;
 
 static CONDITION_VARIABLE Runnable;
 static CRITICAL_SECTION RunLock;
+
+extern CRITICAL_SECTION repr;
+extern CONDITION_VARIABLE reprcondition;
 
 static std::vector<PVOID> Swaps;
 static HANDLE Threads[16];
