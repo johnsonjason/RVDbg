@@ -3,7 +3,7 @@
 ## Overview
 RVDbg (Red Vice Debugger) is a debugger or exception handler for Windows 32-bit PEs. It's moreso an arbitrary exception handler. Labeled arbitrary because it purposefully throws exceptions at an inputted location in the PE's memory. It first makes a hook to the routine *KiUserExceptionDispatcher* and then dumps the contents of the registers into a struct defined as **VirtualRegisters**. Then it makes a call to a routine named *CallChain* and suspends all the threads in the process with the exception of the current thread and resumes any threads assigned to the debugger's internal thread pool.
 
-This is different from a traditional debugger in the sense that it doesn't use any platform-specific debugger APIs targeted for developer use, hardware breakpoints / dr registers, use of the trap flag, debug interrupts, vectored exception handling, and changes wouldn't appear in the Process Environment Block (PEB), so calling a routine like *IsDebuggerPresent* would yield nil results.
+This is different from a traditional debugger in the sense that it doesn't use any platform-specific debugger APIs targeted for developer use, hardware breakpoints / dr registers, use of the trap flag, debug interrupts, vectored exception handling, and changes wouldn't appear in the Process Environment Block (PEB), so calling a routine like *IsDebuggerPresent* would yield nil results. _"The debugger that bypasses anti-debug checks"_
 
 There are two types of exceptions: **IMM/PAGE** (Immediate Exceptions & Page Exceptions)
 
