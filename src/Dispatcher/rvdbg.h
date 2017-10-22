@@ -104,18 +104,9 @@ namespace Dbg
 		xmm7,
 	};
 
-
-	struct IMP_AT
-	{
-		DWORD Size;
-		PVOID Address;
-	};
-
-
 	static void HandleSSE();
 	static PVOID CallChain();
 	static void SetKiUser();
-	static IMP_AT GetIAT(LPCSTR ModuleName);
 
 	int WaitOptModule(const char* OriginalModuleName, const char* OptModuleName);
 	void SetModule(BOOLEAN use);
