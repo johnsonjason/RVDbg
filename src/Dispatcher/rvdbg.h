@@ -5,41 +5,8 @@
 #include "execthread.h"
 #include "..\CHooks\chooks.h"
 #include "..\Injector\injector.h"
+#include "..\IATResolution\iatresolve.h"
 
-
-static VirtualRegisters r_registers;
-
-enum GPRegisters
-{
-	EAX,
-	EBX,
-	ECX,
-	EDX,
-	EDI,
-	ESI,
-	EBP,
-	ESP,
-	EIP
-};
-
-enum SSERegisters
-{
-	xmm0,
-	xmm1,
-	xmm2,
-	xmm3,
-	xmm4,
-	xmm5,
-	xmm6,
-	xmm7,
-};
-
-
-struct IMP_AT
-{
-	DWORD Size;
-	PVOID Address;
-};
 
 static BOOLEAN UseModule;
 
@@ -67,37 +34,115 @@ extern CONDITION_VARIABLE reprcondition;
 
 static std::vector<PVOID> Swaps;
 static HANDLE Threads[16];
-static PoolSect Sector[128];
-static PoolSect CurrentPool;
+static Dispatcher::PoolSect Sector[128];
+static Dispatcher::PoolSect CurrentPool;
+
+namespace Dbg
+{
+
+	struct VirtualRegisters
+	{
+		DWORD eax;
+		DWORD ebx;
+		DWORD ecx;
+		DWORD edx;
+		DWORD esi;
+		DWORD edi;
+		DWORD ebp;
+		DWORD esp;
+		PVOID eip;
+		BOOLEAN SSESet;
+		BOOLEAN bxmm0;
+		BOOLEAN bxmm1;
+		BOOLEAN bxmm2;
+		BOOLEAN bxmm3;
+		BOOLEAN bxmm4;
+		BOOLEAN bxmm5;
+		BOOLEAN bxmm6;
+		BOOLEAN bxmm7;
+		double dxmm0;
+		double dxmm1;
+		double dxmm2;
+		double dxmm3;
+		double dxmm4;
+		double dxmm5;
+		double dxmm6;
+		double dxmm7;
+		float xmm0;
+		float xmm1;
+		float xmm2;
+		float xmm3;
+		float xmm4;
+		float xmm5;
+		float xmm6;
+		float xmm7;
+		DWORD ReturnAddress;
+	};
+
+	enum GPRegisters
+	{
+		EAX,
+		EBX,
+		ECX,
+		EDX,
+		EDI,
+		ESI,
+		EBP,
+		ESP,
+		EIP
+	};
+
+	enum SSERegisters
+	{
+		xmm0,
+		xmm1,
+		xmm2,
+		xmm3,
+		xmm4,
+		xmm5,
+		xmm6,
+		xmm7,
+	};
 
 
-static PVOID CallChain();
-static void SetKiUser();
-static IMP_AT GetIAT(LPCSTR ModuleName);
-static void SetImportAddressTable(const char* ModuleName);
+	struct IMP_AT
+	{
+		DWORD Size;
+		PVOID Address;
+	};
 
-int WaitOptModule(const char* OptModuleName);
-void SetModule(BOOLEAN use);
 
-void AttachRVDbg();
-void DetachRVDbg();
-void ContinueDebugger();
+	static void HandleSSE();
+	static PVOID CallChain();
+	static void SetKiUser();
+	static IMP_AT GetIAT(LPCSTR ModuleName);
 
-void SetRegister(DWORD Register, DWORD value);
-void SetRegisterFP(DWORD Register, BOOLEAN Precision, double Value);
-VirtualRegisters GetRegisters();
+	int WaitOptModule(const char* OriginalModuleName, const char* OptModuleName);
+	void SetModule(BOOLEAN use);
 
-void SetExceptionMode(BOOLEAN lExceptionMode);
-BOOLEAN GetExceptionMode();
-DWORD GetExceptionAddress();
-PoolSect GetPool();
+	void AttachRVDbg();
+	void DetachRVDbg();
+	void ContinueDebugger();
 
-BOOLEAN IsAEHPresent();
+	void SetRegister(DWORD Register, DWORD value);
+	void SetRegisterFP(DWORD Register, BOOLEAN Precision, double Value);
+	Dbg::VirtualRegisters GetRegisters();
 
-int AssignThread(HANDLE Thread);
-void RemoveThread(HANDLE Thread);
+	void SetExceptionMode(BOOLEAN lExceptionMode);
+	BOOLEAN GetExceptionMode();
+	DWORD GetExceptionAddress();
+	Dispatcher::PoolSect GetPool();
 
-PoolSect* GetSector();
-int GetSectorSize();
+	BOOLEAN IsAEHPresent();
+
+	int AssignThread(HANDLE Thread);
+	void RemoveThread(HANDLE Thread);
+
+	Dispatcher::PoolSect* GetSector();
+	int GetSectorSize();
+
+}
+
+static Dbg::VirtualRegisters r_registers;
 
 #endif
