@@ -1,7 +1,8 @@
+// Programmed by jasonfish4
 #include "stdafx.h"
 #include "exceptiondispatcher.h"
 
-void RaiseILGLAccessViolation(BYTE* ptr, BYTE save, BOOLEAN on)
+void Dispatcher::RaiseILGLAccessViolation(BYTE* ptr, BYTE save, BOOLEAN on)
 {
 	DWORD OldProtect;
 	switch (on)
@@ -19,7 +20,7 @@ void RaiseILGLAccessViolation(BYTE* ptr, BYTE save, BOOLEAN on)
 	}
 }
 
-void RaisePageAccessViolation(BYTE* ptr, DWORD save, BOOLEAN on)
+void Dispatcher::RaisePageAccessViolation(BYTE* ptr, DWORD save, BOOLEAN on)
 {
 	DWORD OldProtect;
 	switch (on)
@@ -33,7 +34,7 @@ void RaisePageAccessViolation(BYTE* ptr, DWORD save, BOOLEAN on)
 	}
 }
 
-void RaiseBreakpointException(BYTE* ptr, BYTE save, BOOLEAN on)
+void Dispatcher::RaiseBreakpointException(BYTE* ptr, BYTE save, BOOLEAN on)
 {
 	DWORD OldProtect;
 	switch (on)
@@ -51,7 +52,7 @@ void RaiseBreakpointException(BYTE* ptr, BYTE save, BOOLEAN on)
 	}
 }
 
-void RaisePrivilegedCodeException(BYTE* ptr, BYTE save, BOOLEAN on)
+void Dispatcher::RaisePrivilegedCodeException(BYTE* ptr, BYTE save, BOOLEAN on)
 {
 	DWORD OldProtect;
 	switch (on)
@@ -69,22 +70,22 @@ void RaisePrivilegedCodeException(BYTE* ptr, BYTE save, BOOLEAN on)
 	}
 }
 
-PVOID HandleException(PoolSect segment, const char* ModuleName)
+PVOID Dispatcher::HandleException(Dispatcher::PoolSect segment, const char* ModuleName)
 {
 	switch (segment.ExceptionCode)
 	{
 	case STATUS_ACCESS_VIOLATION:
-		RaiseILGLAccessViolation((BYTE*)segment.ExceptionAddress, segment.SaveCode, FALSE);
+		Dispatcher::RaiseILGLAccessViolation((BYTE*)segment.ExceptionAddress, segment.SaveCode, FALSE);
 		if (segment.UseModule)
 			return (PVOID)((DWORD)GetModuleHandleA(ModuleName) + segment.ExceptionOffset);
 		return (PVOID)segment.ExceptionAddress;
 	case STATUS_BREAKPOINT:
-		RaiseBreakpointException((BYTE*)segment.ExceptionAddress, segment.SaveCode, FALSE);
+		Dispatcher::RaiseBreakpointException((BYTE*)segment.ExceptionAddress, segment.SaveCode, FALSE);
 		if (segment.UseModule)
 			return (PVOID)((DWORD)GetModuleHandleA(ModuleName) + segment.ExceptionOffset);
 		return (PVOID)segment.ExceptionAddress;
 	case STATUS_PRIVILEGED_INSTRUCTION:
-		RaisePrivilegedCodeException((BYTE*)segment.ExceptionAddress, segment.SaveCode, FALSE);
+		Dispatcher::RaisePrivilegedCodeException((BYTE*)segment.ExceptionAddress, segment.SaveCode, FALSE);
 		if (segment.UseModule)
 			return (PVOID)((DWORD)GetModuleHandleA(ModuleName) + segment.ExceptionOffset);
 		return (PVOID)segment.ExceptionAddress;
@@ -92,7 +93,7 @@ PVOID HandleException(PoolSect segment, const char* ModuleName)
 	return NULL;
 }
 
-size_t CheckSector(PoolSect sector[], size_t size)
+size_t Dispatcher::CheckSector(Dispatcher::PoolSect sector[], size_t size)
 {
 	for (size_t iterator = 0; iterator < size; iterator++)
 	{
@@ -102,7 +103,7 @@ size_t CheckSector(PoolSect sector[], size_t size)
 	return (size + 1);
 }
 
-size_t SearchSector(PoolSect sector[], size_t size, DWORD address)
+size_t Dispatcher::SearchSector(Dispatcher::PoolSect sector[], size_t size, DWORD address)
 {
 	for (size_t iterator = 0; iterator < size; iterator++)
 	{
@@ -114,20 +115,20 @@ size_t SearchSector(PoolSect sector[], size_t size, DWORD address)
 }
 
 
-void UnlockSector(PoolSect sector[], size_t index)
+void Dispatcher::UnlockSector(Dispatcher::PoolSect sector[], size_t index)
 {
 	sector[index].IsAEHPresent = FALSE;
 	sector[index].Used = FALSE;
 	sector[index].ExceptionAddress = NULL;
 }
 
-void LockSector(PoolSect sector[], size_t index)
+void Dispatcher::LockSector(Dispatcher::PoolSect sector[], size_t index)
 {
 	sector[index].Used = TRUE;
 	sector[index].IsAEHPresent = FALSE;
 }
 
-DWORD SwapAccess(DWORD AccessException, DWORD Test)
+DWORD Dispatcher::SwapAccess(DWORD AccessException, DWORD Test)
 {
 	MEMORY_BASIC_INFORMATION Query;
 	VirtualQuery((LPCVOID)Test, &Query, sizeof(Query));
@@ -145,21 +146,21 @@ DWORD SwapAccess(DWORD AccessException, DWORD Test)
 		return NULL;
 }
 
-void AddException(PoolSect sector[], size_t index, BOOLEAN Type, DWORD ExceptionAddress)
+void Dispatcher::AddException(Dispatcher::PoolSect sector[], size_t index, BOOLEAN Type, DWORD ExceptionAddress)
 {
 	sector[index].ExceptionAddress = ExceptionAddress;
 	sector[index].SaveCode = *(DWORD*)ExceptionAddress;
 	sector[index].ExceptionType = Type;
 	sector[index].Index = index;
-	LockSector(sector, index);
+	Dispatcher::LockSector(sector, index);
 
 	switch (Type)
 	{
 	case 0:
-		RaisePrivilegedCodeException((BYTE*)sector[index].ExceptionAddress, 0, TRUE);
+		Dispatcher::RaisePrivilegedCodeException((BYTE*)sector[index].ExceptionAddress, 0, TRUE);
 		return;
 	case 1:
-		RaisePageAccessViolation((BYTE*)sector[index].ExceptionAddress, 0, TRUE);
+		Dispatcher::RaisePageAccessViolation((BYTE*)sector[index].ExceptionAddress, 0, TRUE);
 		return;
 	}
 
