@@ -1,6 +1,7 @@
+#include "stdafx.h"
 #include "debugoutput.h"
 
-void SendDbgRegisters(SOCKET Server, BOOLEAN Protocol, DWORD EIP, VirtualRegisters Registers)
+void DbgIO::SendDbgRegisters(SOCKET Server, BOOLEAN Protocol, DWORD EIP, Dbg::VirtualRegisters Registers)
 {
 	char snbuffer[356];
 	if (Protocol == 0)
@@ -46,7 +47,7 @@ void SendDbgRegisters(SOCKET Server, BOOLEAN Protocol, DWORD EIP, VirtualRegiste
 	send(Server, snbuffer, sizeof(snbuffer), 0);
 }
 
-void SendDbgGet(SOCKET Server, BOOLEAN ExceptionType, PoolSect segment)
+void DbgIO::SendDbgGet(SOCKET Server, BOOLEAN ExceptionType, Dispatcher::PoolSect segment)
 {
 	char snbuffer[512];
 	if (ExceptionType != TRUE)
