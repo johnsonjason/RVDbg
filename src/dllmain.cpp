@@ -7,6 +7,7 @@ within an exception signaling function */
 
 #include "stdafx.h"
 #include "Dispatcher\rvdbg.h"
+#include "Dispatcher\exceptiondispatcher.h"
 #include "debugoutput.h"
 #include <winsock.h>
 #include <string>
@@ -16,9 +17,9 @@ within an exception signaling function */
 
 BOOLEAN ProtocolGUI;
 
-const char* ModuleName;
-const char* SecModuleName;
-const char* Filename;
+const char* ModuleName; // Name of the image
+const char* SecModuleName; // Name of the copy image
+const char* Filename; // File location to copy image
 
 SOCKET Server;
 SOCKADDR_IN ServerAddress;
@@ -46,34 +47,34 @@ DWORD WINAPI Repeater(LPVOID lpParam)
 
 void RegisterValue(char Key, DWORD Value)
 {
-	SetRegister(GeneralRegister.at(Key), Value);
+	Dbg::SetRegister(GeneralRegister.at(Key), Value);
 }
 
 void RegisterValueFP(char Key, BOOLEAN Precision, double Value)
 {
-	SetRegisterFP(XMMRegister.at(Key), Precision, Value);
+	Dbg::SetRegisterFP(XMMRegister.at(Key), Precision, Value);
 }
 
 void CreateMap()
 {
-	GeneralRegister['0'] = GPRegisters::EAX;
-	GeneralRegister['1'] = GPRegisters::EBX;
-	GeneralRegister['2'] = GPRegisters::ECX;
-	GeneralRegister['3'] = GPRegisters::EDX;
-	GeneralRegister['4'] = GPRegisters::EDI;
-	GeneralRegister['5'] = GPRegisters::ESI;
-	GeneralRegister['6'] = GPRegisters::EBP;
-	GeneralRegister['7'] = GPRegisters::ESP;
-	GeneralRegister['8'] = GPRegisters::EIP;
+	GeneralRegister['0'] = Dbg::GPRegisters::EAX;
+	GeneralRegister['1'] = Dbg::GPRegisters::EBX;
+	GeneralRegister['2'] = Dbg::GPRegisters::ECX;
+	GeneralRegister['3'] = Dbg::GPRegisters::EDX;
+	GeneralRegister['4'] = Dbg::GPRegisters::EDI;
+	GeneralRegister['5'] = Dbg::GPRegisters::ESI;
+	GeneralRegister['6'] = Dbg::GPRegisters::EBP;
+	GeneralRegister['7'] = Dbg::GPRegisters::ESP;
+	GeneralRegister['8'] = Dbg::GPRegisters::EIP;
 
-	XMMRegister['0'] = SSERegisters::xmm0;
-	XMMRegister['1'] = SSERegisters::xmm1;
-	XMMRegister['2'] = SSERegisters::xmm2;
-	XMMRegister['3'] = SSERegisters::xmm3;
-	XMMRegister['4'] = SSERegisters::xmm4;
-	XMMRegister['5'] = SSERegisters::xmm5;
-	XMMRegister['6'] = SSERegisters::xmm6;
-	XMMRegister['7'] = SSERegisters::xmm7;
+	XMMRegister['0'] = Dbg::SSERegisters::xmm0;
+	XMMRegister['1'] = Dbg::SSERegisters::xmm1;
+	XMMRegister['2'] = Dbg::SSERegisters::xmm2;
+	XMMRegister['3'] = Dbg::SSERegisters::xmm3;
+	XMMRegister['4'] = Dbg::SSERegisters::xmm4;
+	XMMRegister['5'] = Dbg::SSERegisters::xmm5;
+	XMMRegister['6'] = Dbg::SSERegisters::xmm6;
+	XMMRegister['7'] = Dbg::SSERegisters::xmm7;
 }
 
 DWORD WINAPI Dispatch(PVOID lpParam)
@@ -87,10 +88,12 @@ DWORD WINAPI Dispatch(PVOID lpParam)
 	ServerAddress.sin_family = AF_INET;
 	connect(Server, (SOCKADDR*)&ServerAddress, sizeof(ServerAddress));
 
-	AttachRVDbg();
+	Dbg::AttachRVDbg();
+
 	CreateMap();
-	AssignThread(lThreads[0]);
-	AssignThread(lThreads[1]);
+
+	Dbg::AssignThread(lThreads[0]);
+	Dbg::AssignThread(lThreads[1]);
 
 	char buffer[128];
 	char snbuffer[128];
@@ -135,37 +138,41 @@ DWORD WINAPI Dispatch(PVOID lpParam)
 
 		else if (receiver == std::string("!Breakpoint"))
 		{
-			SetExceptionMode(0);
-			size_t ExceptionElement = CheckSector(GetSector(), 128);
+			Dbg::SetExceptionMode(0);
+			size_t ExceptionElement = Dispatcher::CheckSector(Dbg::GetSector(), 128);
+
 			MEMORY_BASIC_INFORMATION mbi;
 			VirtualQuery((LPVOID)Symbol, &mbi, sizeof(mbi));
+
 			if (mbi.Protect != PAGE_NOACCESS)
-				AddException(GetSector(), ExceptionElement, 0, Symbol);
+				Dispatcher::AddException(Dbg::GetSector(), ExceptionElement, 0, Symbol);
 		}
 		else if (receiver.substr(0, std::string("!Undo ").length()) == std::string("!Undo "))
 		{
 			int index = strtol(receiver.substr(std::string("!Undo ").length(), receiver.length()).c_str(), NULL, 12);
-			if (index < GetSectorSize())
+			if (index < Dbg::GetSectorSize())
 			{
 				DWORD OldProtect;
-				VirtualProtect((LPVOID)GetSector()[index].ExceptionAddress, 1, PAGE_EXECUTE_READWRITE, &OldProtect);
-				*(DWORD*)(GetSector()[index].ExceptionAddress) = (GetSector()[index].SaveCode);
-				VirtualProtect((LPVOID)GetSector()[index].ExceptionAddress, 1, OldProtect, &OldProtect);
-				UnlockSector(GetSector(), index);
+				VirtualProtect((LPVOID)Dbg::GetSector()[index].ExceptionAddress, 1, PAGE_EXECUTE_READWRITE, &OldProtect);
+
+				*(DWORD*)(Dbg::GetSector()[index].ExceptionAddress) = (Dbg::GetSector()[index].SaveCode);
+
+				VirtualProtect((LPVOID)Dbg::GetSector()[index].ExceptionAddress, 1, OldProtect, &OldProtect);
+				Dispatcher::UnlockSector(Dbg::GetSector(), index);
 			}
 			index = 0;
 		}
 		else if (receiver == std::string("?Breakpoint"))
 		{
-			SetExceptionMode(1);
-			size_t ExceptionElement = CheckSector(GetSector(), 128);
-			AddException(GetSector(), ExceptionElement, 1, Symbol);
+			Dbg::SetExceptionMode(1);
+			size_t ExceptionElement = Dispatcher::CheckSector(Dbg::GetSector(), 128);
+			Dispatcher::AddException(Dbg::GetSector(), ExceptionElement, 1, Symbol);
 		}
 
 		else if (receiver == std::string("!Get"))
 		{
-			int index = SearchSector(GetSector(), GetSectorSize(), Symbol);
-			if (index < GetSectorSize())
+			int index = Dispatcher::SearchSector(Dbg::GetSector(), Dbg::GetSectorSize(), Symbol);
+			if (index < Dbg::GetSectorSize())
 			{
 				snprintf(snbuffer, sizeof(snbuffer), "$    Symbol: 0x%02X\r\n    Index:%d\r\n", Symbol, index);
 				send(Server, snbuffer, sizeof(snbuffer), 0);
@@ -175,36 +182,36 @@ DWORD WINAPI Dispatch(PVOID lpParam)
 		}
 
 		else if (receiver == std::string("!DbgGet"))
-			SendDbgGet(Server, GetExceptionMode(), GetPool());
+			DbgIO::SendDbgGet(Server, Dbg::GetExceptionMode(), Dbg::GetPool());
 		
 
 		else if (receiver == std::string("!DbgDisplayRegisters"))
-			SendDbgRegisters(Server, ProtocolGUI, GetExceptionAddress(), GetRegisters());
+			DbgIO::SendDbgRegisters(Server, ProtocolGUI, Dbg::GetExceptionAddress(), Dbg::GetRegisters());
 		else if (receiver == std::string("!xmm-f"))
-			SendDbgRegisters(Server, 2, GetExceptionAddress(), GetRegisters());
+			DbgIO::SendDbgRegisters(Server, 2, Dbg::GetExceptionAddress(), Dbg::GetRegisters());
 		else if (receiver == std::string("!xmm-d"))
-			SendDbgRegisters(Server, 3, GetExceptionAddress(), GetRegisters());
+			DbgIO::SendDbgRegisters(Server, 3, Dbg::GetExceptionAddress(), Dbg::GetRegisters());
 
 		else if (receiver == std::string("!DbgRun"))
 		{
-			if (IsAEHPresent())
-				ContinueDebugger();
+			if (Dbg::IsAEHPresent())
+				Dbg::ContinueDebugger();
 		}
 
 		else if (receiver == std::string("!Exit"))
 		{
-			if (IsAEHPresent())
-				ContinueDebugger();
+			if (Dbg::IsAEHPresent())
+				Dbg::ContinueDebugger();
 			break;
 		}
 	}
 
-	DetachRVDbg();
+	Dbg::DetachRVDbg();
 	closesocket(Server);
 	WSACleanup();
 	TerminateThread(lThreads[0], 0);
-	RemoveThread(lThreads[0]);
-	RemoveThread(lThreads[1]);
+	Dbg::RemoveThread(lThreads[0]);
+	Dbg::RemoveThread(lThreads[1]);
 	return 0;
 }
 
@@ -227,5 +234,4 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpReser
 	}
 	return TRUE;
 }
-
 
