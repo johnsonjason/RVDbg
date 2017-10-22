@@ -5,7 +5,7 @@ BOOLEAN tDSend;
 CRITICAL_SECTION repr;
 CONDITION_VARIABLE reprcondition;
 
-static void HandleSSE()
+static void Dbg::HandleSSE()
 {
 	if (r_registers.bxmm0 == 1)
 		__asm movsd xmm0, r_registers.dxmm0;
@@ -56,7 +56,7 @@ static void HandleSSE()
 	r_registers.bxmm7 = 0;
 }
 
-static PVOID CallChain()
+static PVOID Dbg::CallChain()
 {
 	size_t ExceptionElement = SearchSector(Sector, 128, ExceptionComparator);
 
@@ -65,7 +65,7 @@ static PVOID CallChain()
 		if (ExceptionMode == 2)
 		{
 			SuspendThreads(GetCurrentProcessId(), GetCurrentThreadId());
-			DWORD swap_ad = SwapAccess(AccessException, AccessException);
+			DWORD swap_ad = Dispatcher::SwapAccess(AccessException, AccessException);
 
 			if (!swap_ad)
 			{
@@ -82,6 +82,8 @@ static PVOID CallChain()
 	SuspendThreads(GetCurrentProcessId(), GetCurrentThreadId());
 	Debugger = TRUE;
 	tDSend = TRUE;
+	WakeConditionVariable(&reprcondition);
+
 
 	for (size_t iterator = 0; iterator < sizeof(Threads); iterator++)
 	{
@@ -90,7 +92,7 @@ static PVOID CallChain()
 	}
 
 	Sector[ExceptionElement].ExceptionCode = ExceptionCode;
-	PVOID ReturnException = HandleException(Sector[ExceptionElement], Sector[ExceptionElement].ModuleName);
+	PVOID ReturnException = Dispatcher::HandleException(Sector[ExceptionElement], Sector[ExceptionElement].ModuleName);
 	r_registers.eip = ReturnException;
 
 	Sector[ExceptionElement].Thread = GetCurrentThread();
@@ -104,7 +106,7 @@ static PVOID CallChain()
 	LeaveCriticalSection(&RunLock);
 
 	ResumeThreads(GetCurrentProcessId(), GetCurrentThreadId());
-	UnlockSector(Sector, ExceptionElement);
+	Dispatcher::UnlockSector(Sector, ExceptionElement);
 	return r_registers.eip;
 }
 
@@ -150,7 +152,7 @@ static __declspec(naked) VOID NTAPI KiUserExceptionDispatcher(PEXCEPTION_RECORD 
 		mov[AccessException], eax;
 	}
 
-	Decision = (PVOID)CallChain(); // Initiate the CallChain function
+	Decision = (PVOID)Dbg::CallChain(); // Initiate the CallChain function
 
 	if (!Decision) // if the decision is null, then jump back to the real dispatcher
 	{
@@ -163,7 +165,7 @@ static __declspec(naked) VOID NTAPI KiUserExceptionDispatcher(PEXCEPTION_RECORD 
 		}
 	}
 	if (r_registers.SSESet == TRUE)
-		HandleSSE();
+		Dbg::HandleSSE();
 	r_registers.SSESet = FALSE;
 	__asm
 	{
@@ -179,7 +181,7 @@ static __declspec(naked) VOID NTAPI KiUserExceptionDispatcher(PEXCEPTION_RECORD 
 
 }
 
-static void SetKiUser()
+static void Dbg::SetKiUser()
 {
 	KiUser = (PVOID)GetProcAddress(GetModuleHandleA("ntdll.dll"), "KiUserExceptionDispatcher"); // Hook, tampered exception dispatcher later
 	KiUserRealDispatcher = (PVOID)GetProcAddress(GetModuleHandleA("ntdll.dll"), "KiUserExceptionDispatcher"); // If something fails, will jump back to the real dispatcher
@@ -192,7 +194,7 @@ static void SetKiUser()
 }
 
 
-static IMP_AT GetIAT(LPCSTR ModuleName)
+static Dbg::IMP_AT Dbg::GetIAT(LPCSTR ModuleName)
 {
 	HMODULE mod = GetModuleHandleA(ModuleName);
 
@@ -210,38 +212,23 @@ static IMP_AT GetIAT(LPCSTR ModuleName)
 	return Retn;
 }
 
-static void SetImportAddressTable(const char* ModuleName)
-{
-	DWORD OldProtect;
-	MEMORY_BASIC_INFORMATION inf;
-	IMP_AT CopyModule = GetIAT(0);
-	IMP_AT SelfModule = GetIAT(ModuleName);
-	printf("_iat: %p\n", CopyModule.Address);
-	printf("iat: %p\n", SelfModule.Address);
-	VirtualProtect(SelfModule.Address, 1, PAGE_EXECUTE_READWRITE, &OldProtect);
-	printf("Error1: %d\n", GetLastError());
-	VirtualQuery(SelfModule.Address, &inf, sizeof(inf));
-	memcpy(SelfModule.Address, CopyModule.Address, inf.RegionSize);
-	VirtualProtect(SelfModule.Address, 1, OldProtect, &OldProtect);
-}
-
-int WaitOptModule(const char* OptModuleName)
+int Dbg::WaitOptModule(const char* OriginalModuleName, const char* OptModuleName)
 {
 	if (!UseModule)
 		return -1;
 	volatile PVOID ModPtr = NULL;
 	while (!ModPtr)
 		ModPtr = (PVOID)GetModuleHandleA(OptModuleName);
-	SetImportAddressTable(OptModuleName);
+	IATResolver::ResolveIAT(OriginalModuleName, OptModuleName);
 	return 0;
 }
 
-void SetModule(BOOLEAN use)
+void Dbg::SetModule(BOOLEAN use)
 {
 	UseModule = use;
 }
 
-int AssignThread(HANDLE Thread)
+int Dbg::AssignThread(HANDLE Thread)
 {
 	for (size_t iterator = 0; iterator < sizeof(Threads); iterator++)
 	{
@@ -254,7 +241,7 @@ int AssignThread(HANDLE Thread)
 	return -1;
 }
 
-void RemoveThread(HANDLE Thread)
+void Dbg::RemoveThread(HANDLE Thread)
 {
 	for (size_t iterator = 0; iterator < sizeof(Threads); iterator++)
 	{
@@ -267,68 +254,68 @@ void RemoveThread(HANDLE Thread)
 	}
 }
 
-void AttachRVDbg()
+void Dbg::AttachRVDbg()
 {
 	InitializeConditionVariable(&Runnable);
 	InitializeCriticalSection(&RunLock);
-	SetKiUser();
+	Dbg::SetKiUser();
 	HookFunction(KiUser, (PVOID)KiUserExceptionDispatcher, "ntdll.dll:KiUserExceptionDispatcher");
 }
 
-void DetachRVDbg()
+void Dbg::DetachRVDbg()
 {
 	UnhookFunction(KiUser, (PVOID)KiUserExceptionDispatcher, "ntdll.dll:KiUserExceptionDispatcher");
 }
 
-void ContinueDebugger()
+void Dbg::ContinueDebugger()
 {
 	WakeConditionVariable(&Runnable);
 }
 
-BOOLEAN IsAEHPresent()
+BOOLEAN Dbg::IsAEHPresent()
 {
 	return CurrentPool.IsAEHPresent;
 }
 
-void SetRegister(DWORD Register, DWORD Value)
+void Dbg::SetRegister(DWORD Register, DWORD Value)
 {
 	switch (Register)
 	{
-	case GPRegisters::EAX:
+	case Dbg::GPRegisters::EAX:
 		r_registers.eax = Value;
 		return;
-	case GPRegisters::EBX:
+	case Dbg::GPRegisters::EBX:
 		r_registers.ebx = Value;
 		return;
-	case GPRegisters::ECX:
+	case Dbg::GPRegisters::ECX:
 		r_registers.ecx = Value;
 		return;
-	case GPRegisters::EDX:
+	case Dbg::GPRegisters::EDX:
 		r_registers.edx = Value;
 		return;
-	case GPRegisters::ESI:
+	case Dbg::GPRegisters::ESI:
 		r_registers.esi = Value;
 		return;
-	case GPRegisters::EDI:
+	case Dbg::GPRegisters::EDI:
 		r_registers.edi = Value;
 		return;
-	case GPRegisters::EBP:
+	case Dbg::GPRegisters::EBP:
 		r_registers.ebp = Value;
 		return;
-	case GPRegisters::ESP:
+	case Dbg::GPRegisters::ESP:
 		r_registers.esp = Value;
 		return;
-	case GPRegisters::EIP:
+	case Dbg::GPRegisters::EIP:
 		r_registers.eip = (PVOID)Value;
 	}
 }
 
-void SetRegisterFP(DWORD Register, BOOLEAN Precision, double Value)
+void Dbg::SetRegisterFP(DWORD Register, BOOLEAN Precision, double Value)
 {
 	r_registers.SSESet = TRUE;
 	switch (Register)
 	{
-	case SSERegisters::xmm0:
+	case Dbg::SSERegisters::xmm0:
 		if (Precision)
 		{
 			r_registers.bxmm0 = 1;
@@ -338,7 +325,7 @@ void SetRegisterFP(DWORD Register, BOOLEAN Precision, double Value)
 		r_registers.bxmm0 = 2;
 		r_registers.xmm0 = (float)Value;
 		return;
-	case SSERegisters::xmm1:
+	case Dbg::SSERegisters::xmm1:
 		if (Precision)
 		{
 			r_registers.bxmm1 = 1;
@@ -348,7 +335,7 @@ void SetRegisterFP(DWORD Register, BOOLEAN Precision, double Value)
 		r_registers.bxmm1 = 2;
 		r_registers.xmm1 = (float)Value;
 		return;
-	case SSERegisters::xmm2:
+	case Dbg::SSERegisters::xmm2:
 		if (Precision)
 		{
 			r_registers.bxmm2 = 1;
@@ -358,7 +345,7 @@ void SetRegisterFP(DWORD Register, BOOLEAN Precision, double Value)
 		r_registers.bxmm2 = 2;
 		r_registers.xmm2 = (float)Value;
 		return;
-	case SSERegisters::xmm3:
+	case Dbg::SSERegisters::xmm3:
 		if (Precision)
 		{
 			r_registers.bxmm3 = 1;
@@ -368,7 +355,7 @@ void SetRegisterFP(DWORD Register, BOOLEAN Precision, double Value)
 		r_registers.bxmm3 = 2;
 		r_registers.xmm3 = (float)Value;
 		return;
-	case SSERegisters::xmm4:
+	case Dbg::SSERegisters::xmm4:
 		if (Precision)
 		{
 			r_registers.bxmm4 = 1;
@@ -378,7 +365,7 @@ void SetRegisterFP(DWORD Register, BOOLEAN Precision, double Value)
 		r_registers.bxmm4 = 2;
 		r_registers.xmm4 = (float)Value;
 		return;
-	case SSERegisters::xmm5:
+	case Dbg::SSERegisters::xmm5:
 		if (Precision)
 		{
 			r_registers.bxmm5 = 1;
@@ -388,7 +375,7 @@ void SetRegisterFP(DWORD Register, BOOLEAN Precision, double Value)
 		r_registers.bxmm5 = 2;
 		r_registers.xmm5 = (float)Value;
 		return;
-	case SSERegisters::xmm6:
+	case Dbg::SSERegisters::xmm6:
 		if (Precision)
 		{
 			r_registers.bxmm6 = 1;
@@ -398,7 +385,7 @@ void SetRegisterFP(DWORD Register, BOOLEAN Precision, double Value)
 		r_registers.bxmm6 = 2;
 		r_registers.xmm6 = (float)Value;
 		return;
-	case SSERegisters::xmm7:
+	case Dbg::SSERegisters::xmm7:
 		if (Precision)
 		{
 			r_registers.bxmm7 = 1;
@@ -411,38 +398,38 @@ void SetRegisterFP(DWORD Register, BOOLEAN Precision, double Value)
 	}
 }
 
-void SetExceptionMode(BOOLEAN lExceptionMode)
+void Dbg::SetExceptionMode(BOOLEAN lExceptionMode)
 {
 	ExceptionMode = lExceptionMode;
 }
 
-BOOLEAN GetExceptionMode()
+BOOLEAN Dbg::GetExceptionMode()
 {
 	return ExceptionMode;
 }
 
-DWORD GetExceptionAddress()
+DWORD Dbg::GetExceptionAddress()
 {
 	return CurrentPool.ExceptionAddress;
 }
 
-VirtualRegisters GetRegisters()
+Dbg::VirtualRegisters Dbg::GetRegisters()
 {
 	return r_registers;
 }
 
-PoolSect GetPool()
+Dispatcher::PoolSect Dbg::GetPool()
 {
 	return CurrentPool;
 }
 
-PoolSect* GetSector()
+Dispatcher::PoolSect* Dbg::GetSector()
 {
 	return Sector;
 }
 
-int GetSectorSize()
+int Dbg::GetSectorSize()
 {
-	return sizeof(Sector) / sizeof(PoolSect);
+	return sizeof(Sector) / sizeof(Dispatcher::PoolSect);
 }
 
