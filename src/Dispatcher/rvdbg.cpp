@@ -193,25 +193,6 @@ static void Dbg::SetKiUser()
 	KiUserRealDispatcher = (PVOID)KiUserRealDispatcher2;
 }
 
-
-static Dbg::IMP_AT Dbg::GetIAT(LPCSTR ModuleName)
-{
-	HMODULE mod = GetModuleHandleA(ModuleName);
-
-	PIMAGE_DOS_HEADER img_dos_headers = (PIMAGE_DOS_HEADER)mod;
-	PIMAGE_NT_HEADERS img_nt_headers = (PIMAGE_NT_HEADERS)((BYTE*)img_dos_headers + img_dos_headers->e_lfanew);
-
-	PIMAGE_IMPORT_DESCRIPTOR img_import_desc = (PIMAGE_IMPORT_DESCRIPTOR)((BYTE*)img_dos_headers +
-		img_nt_headers->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
-
-	DWORD IATSize = (img_nt_headers->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].Size * 4);
-
-	IMP_AT Retn;
-	Retn.Size = IATSize;
-	Retn.Address = (PVOID)((DWORD)mod + img_import_desc->FirstThunk - 0x1DC);
-	return Retn;
-}
-
 int Dbg::WaitOptModule(const char* OriginalModuleName, const char* OptModuleName)
 {
 	if (!UseModule)
