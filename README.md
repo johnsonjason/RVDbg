@@ -22,6 +22,8 @@ Enumerates through the process list, thread list of the selected process, detail
 Screenshot of RVDbg - Commandline:
 ![alt_text](https://i.imgur.com/3PYyVLR.png)
 
+Changes will also appear here: https://forum.redvice.org/t/this-is-the-thread-to-discuss-rvdbg/91
+
 Commandline commands:
 ```
 Symbol @ Address - set the program to that symbol
