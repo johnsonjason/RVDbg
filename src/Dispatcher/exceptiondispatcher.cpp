@@ -1,5 +1,4 @@
 // Programmed by jasonfish4
-#include "stdafx.h"
 #include "exceptiondispatcher.h"
 
 void Dispatcher::RaiseILGLAccessViolation(BYTE* ptr, BYTE save, BOOLEAN on)
@@ -128,23 +127,6 @@ void Dispatcher::LockSector(Dispatcher::PoolSect sector[], size_t index)
 	sector[index].IsAEHPresent = FALSE;
 }
 
-DWORD Dispatcher::SwapAccess(DWORD AccessException, DWORD Test)
-{
-	MEMORY_BASIC_INFORMATION Query;
-	VirtualQuery((LPCVOID)Test, &Query, sizeof(Query));
-
-	if (AccessException >= (DWORD)Query.BaseAddress && AccessException <= ((DWORD)Query.BaseAddress + Query.RegionSize))
-	{
-		DWORD OldProtect;
-		void* SwapMemory = calloc(1, 32);
-		VirtualProtect((LPVOID)AccessException, 1, PAGE_READONLY, &OldProtect);
-		memcpy(SwapMemory, (void*)AccessException, 32);
-		VirtualProtect((LPVOID)AccessException, 1, OldProtect, &OldProtect);
-		return (DWORD)SwapMemory;
-	}
-	else
-		return NULL;
-}
 
 void Dispatcher::AddException(Dispatcher::PoolSect sector[], size_t index, BOOLEAN Type, DWORD ExceptionAddress)
 {
