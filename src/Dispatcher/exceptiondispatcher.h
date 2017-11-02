@@ -5,6 +5,9 @@
 #include <tlhelp32.h>
 #include <stdlib.h>
 
+
+// Contain pointers that registers use, save them for later use aka register storage 2
+
 namespace Dispatcher
 {
 	struct PoolSect
@@ -35,7 +38,5 @@ namespace Dispatcher
 	void UnlockSector(PoolSect sector[], size_t index);
 	void LockSector(PoolSect sector[], size_t index);
 	void AddException(PoolSect sector[], size_t index, BOOLEAN Type, DWORD ExceptionAddress);
-	DWORD SwapAccess(DWORD AccessException, DWORD Test);
 }
-
 #endif
