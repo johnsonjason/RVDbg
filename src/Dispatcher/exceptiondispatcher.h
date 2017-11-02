@@ -5,9 +5,6 @@
 #include <tlhelp32.h>
 #include <stdlib.h>
 
-
-// Contain pointers that registers use, save them for later use aka register storage 2
-
 namespace Dispatcher
 {
 	struct PoolSect
@@ -25,7 +22,6 @@ namespace Dispatcher
 		DWORD SaveCode;
 		DWORD Index;
 	};
-
 
 	void RaiseILGLAccessViolation(BYTE* ptr, BYTE save, BOOLEAN on);
 	void RaisePageAccessViolation(BYTE* ptr, DWORD save, BOOLEAN on);
