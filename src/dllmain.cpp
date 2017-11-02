@@ -4,8 +4,6 @@
 within an exception signaling function */
 
 #define _CRT_SECURE_NO_DEPRECATE
-
-#include "stdafx.h"
 #include "Dispatcher\rvdbg.h"
 #include "Dispatcher\exceptiondispatcher.h"
 #include "debugoutput.h"
@@ -24,24 +22,23 @@ const char* Filename; // File location to copy image
 SOCKET Server;
 SOCKADDR_IN ServerAddress;
 HANDLE lThreads[2];
+
 std::map<char, DWORD> XMMRegister;
 std::map<char, DWORD> GeneralRegister;
-
-
 
 DWORD WINAPI Repeater(LPVOID lpParam)
 {
 	while (TRUE)
 	{
-		if (tDSend == FALSE)
+		if (Dbg::tDSend == FALSE)
 		{
-			EnterCriticalSection(&repr);
-			SleepConditionVariableCS(&reprcondition, &repr, INFINITE);
-			LeaveCriticalSection(&repr);
+			EnterCriticalSection(&Dbg::repr);
+			SleepConditionVariableCS(&Dbg::reprcondition, &Dbg::repr, INFINITE);
+			LeaveCriticalSection(&Dbg::repr);
 		}
-		if (tDSend == TRUE)
+		if (Dbg::tDSend == TRUE)
 			send(Server, std::string("!DbgModeOn").c_str(), std::string("!DbgModeOn").size(), 0);
-		tDSend = FALSE;
+		Dbg::tDSend = FALSE;
 	}
 }
 
@@ -89,6 +86,8 @@ DWORD WINAPI Dispatch(PVOID lpParam)
 	connect(Server, (SOCKADDR*)&ServerAddress, sizeof(ServerAddress));
 
 	Dbg::AttachRVDbg();
+	Dbg::SetModule(TRUE, ModuleName, SecModuleName);
+	Dbg::SetPauseMode(PAUSE_ALL);
 
 	CreateMap();
 
@@ -138,14 +137,23 @@ DWORD WINAPI Dispatch(PVOID lpParam)
 
 		else if (receiver == std::string("!Breakpoint"))
 		{
-			Dbg::SetExceptionMode(0);
 			size_t ExceptionElement = Dispatcher::CheckSector(Dbg::GetSector(), 128);
 
 			MEMORY_BASIC_INFORMATION mbi;
 			VirtualQuery((LPVOID)Symbol, &mbi, sizeof(mbi));
 
 			if (mbi.Protect != PAGE_NOACCESS)
-				Dispatcher::AddException(Dbg::GetSector(), ExceptionElement, 0, Symbol);
+			{
+				switch (Dbg::GetExceptionMode())
+				{
+				case 0:
+					Dispatcher::AddException(Dbg::GetSector(), ExceptionElement, IMMEDIATE_EXCEPTION, Symbol);
+					break;
+				case 1:
+					Dispatcher::AddException(Dbg::GetSector(), ExceptionElement, PAGE_EXCEPTION, Symbol);
+					break;
+				}
+			}
 		}
 		else if (receiver.substr(0, std::string("!Undo ").length()) == std::string("!Undo "))
 		{
@@ -162,12 +170,11 @@ DWORD WINAPI Dispatch(PVOID lpParam)
 			}
 			index = 0;
 		}
-		else if (receiver == std::string("?Breakpoint"))
-		{
-			Dbg::SetExceptionMode(1);
-			size_t ExceptionElement = Dispatcher::CheckSector(Dbg::GetSector(), 128);
-			Dispatcher::AddException(Dbg::GetSector(), ExceptionElement, 1, Symbol);
-		}
+
+		else if (receiver == std::string("imode"))
+			Dbg::SetExceptionMode(IMMEDIATE_EXCEPTION);
+		else if (receiver == std::string("pmode"))
+			Dbg::SetExceptionMode(PAGE_EXCEPTION);
 
 		else if (receiver == std::string("!Get"))
 		{
@@ -223,8 +230,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpReser
 		UseModule = FALSE;
 		if (UseModule)
 			DLLInject(GetCurrentProcessId(), Filename);
-		InitializeCriticalSection(&repr);
-		InitializeConditionVariable(&reprcondition);
+		InitializeCriticalSection(&Dbg::repr);
+		InitializeConditionVariable(&Dbg::reprcondition);
 		lThreads[0] = CreateThread(0, 0, Repeater, 0, 0, 0);
 		lThreads[1] = CreateThread(0, 0, Dispatch, 0, 0, 0);
 	case DLL_THREAD_ATTACH:
