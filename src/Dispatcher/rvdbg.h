@@ -33,9 +33,6 @@ static PVOID KiUser;
 static CONDITION_VARIABLE Runnable;
 static CRITICAL_SECTION RunLock;
 
-extern CRITICAL_SECTION repr;
-extern CONDITION_VARIABLE reprcondition;
-
 static std::vector<PVOID> Swaps;
 static HANDLE Threads[16];
 
@@ -125,6 +122,8 @@ namespace Dbg
 	void SetModule(BOOLEAN use, const char* OriginalModuleName, const char* ModuleCopyName);
 	char* GetCopyModuleName();
 
+	extern CRITICAL_SECTION repr;
+	extern CONDITION_VARIABLE reprcondition;
 	extern BOOLEAN tDSend;
 
 	void SetPauseMode(BOOLEAN PauseMode);
