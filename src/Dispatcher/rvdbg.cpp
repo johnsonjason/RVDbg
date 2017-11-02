@@ -1,7 +1,6 @@
-#include "stdafx.h"
 #include "rvdbg.h"
 
-BOOLEAN tDSend;
+BOOLEAN Dbg::tDSend;
 CRITICAL_SECTION repr;
 CONDITION_VARIABLE reprcondition;
 
@@ -56,43 +55,49 @@ static void Dbg::HandleSSE()
 	r_registers.bxmm7 = 0;
 }
 
-static PVOID Dbg::CallChain()
+static void Dbg::ResumeSelfThreads()
 {
-	size_t ExceptionElement = SearchSector(Sector, 128, ExceptionComparator);
-
-	if (ExceptionElement > 128)
-	{
-		if (ExceptionMode == 2)
-		{
-			SuspendThreads(GetCurrentProcessId(), GetCurrentThreadId());
-			DWORD swap_ad = Dispatcher::SwapAccess(AccessException, AccessException);
-
-			if (!swap_ad)
-			{
-				ChunkExecutable = FALSE;
-				return NULL;
-			}
-
-			Swaps.push_back((PVOID)swap_ad);
-			return (PVOID)swap_ad;
-		}
-		return NULL;
-	}
-
-	SuspendThreads(GetCurrentProcessId(), GetCurrentThreadId());
-	Debugger = TRUE;
-	tDSend = TRUE;
-	WakeConditionVariable(&reprcondition);
-
-
 	for (size_t iterator = 0; iterator < sizeof(Threads); iterator++)
 	{
 		if (Threads[iterator] != NULL)
 			ResumeThread(Threads[iterator]);
 	}
+}
+
+static PVOID Dbg::CallChainVPA()
+{
+	size_t ExceptionElement = SearchSector(Sector, 128, ExceptionComparator);
+
+	if (ExceptionElement > 128)
+		return NULL;
+
+	return NULL;
+}
+
+static PVOID Dbg::CallChain()
+{
+	size_t ExceptionElement = SearchSector(Sector, Dbg::GetSectorSize(), ExceptionComparator);
+
+	if (ExceptionElement > Dbg::GetSectorSize())
+	{
+		if (ExceptionMode == 1)
+			return (GetModuleHandleA(Dbg::GetCopyModuleName()) + (ExceptionComparator - (DWORD)GetModuleHandleA(MainModule)));
+		return NULL;
+	}
+
+	if (Dbg::GetPauseMode() == PAUSE_ALL)
+		SuspendThreads(GetCurrentProcessId(), GetCurrentThreadId());
+
+	Debugger = TRUE; 
+	Dbg::tDSend = TRUE;
+	WakeConditionVariable(&reprcondition);
+
+	if (Dbg::GetPauseMode() == PAUSE_ALL)
+		Dbg::ResumeSelfThreads();
 
 	Sector[ExceptionElement].ExceptionCode = ExceptionCode;
 	PVOID ReturnException = Dispatcher::HandleException(Sector[ExceptionElement], Sector[ExceptionElement].ModuleName);
+	
 	r_registers.eip = ReturnException;
 
 	Sector[ExceptionElement].Thread = GetCurrentThread();
@@ -101,12 +106,16 @@ static PVOID Dbg::CallChain()
 
 	CurrentPool = Sector[ExceptionElement];
 
-	EnterCriticalSection(&RunLock);
-	SleepConditionVariableCS(&Runnable, &RunLock, INFINITE);
-	LeaveCriticalSection(&RunLock);
+	if (Dbg::GetPauseMode() == PAUSE_ALL || Dbg::GetPauseMode() == PAUSE_SINGLE)
+	{
+		EnterCriticalSection(&RunLock);
+		SleepConditionVariableCS(&Runnable, &RunLock, INFINITE);
+		LeaveCriticalSection(&RunLock);
+		ResumeThreads(GetCurrentProcessId(), GetCurrentThreadId());
+	}
 
-	ResumeThreads(GetCurrentProcessId(), GetCurrentThreadId());
 	Dispatcher::UnlockSector(Sector, ExceptionElement);
+
 	return r_registers.eip;
 }
 
@@ -151,8 +160,16 @@ static __declspec(naked) VOID NTAPI KiUserExceptionDispatcher(PEXCEPTION_RECORD 
 		mov eax, [esp + 20]; // when access exceptions are enabled, move the accessed memoryh ere
 		mov[AccessException], eax;
 	}
-
-	Decision = (PVOID)Dbg::CallChain(); // Initiate the CallChain function
+	
+	switch (Dbg::GetExceptionMode())
+	{
+	case 0:
+		Decision = (PVOID)Dbg::CallChain(); // Initiate the CallChain function
+		break;
+	case 1:
+		Decision = (PVOID)Dbg::CallChainVPA();
+		break;
+	}
 
 	if (!Decision) // if the decision is null, then jump back to the real dispatcher
 	{
@@ -164,9 +181,11 @@ static __declspec(naked) VOID NTAPI KiUserExceptionDispatcher(PEXCEPTION_RECORD 
 			jmp KiUserRealDispatcher;
 		}
 	}
+
 	if (r_registers.SSESet == TRUE)
 		Dbg::HandleSSE();
 	r_registers.SSESet = FALSE;
+
 	__asm
 	{
 		mov eax, r_registers.eax;
@@ -193,7 +212,17 @@ static void Dbg::SetKiUser()
 	KiUserRealDispatcher = (PVOID)KiUserRealDispatcher2;
 }
 
-int Dbg::WaitOptModule(const char* OriginalModuleName, const char* OptModuleName)
+void Dbg::SetPauseMode(BOOLEAN PauseMode)
+{
+	Pause = PauseMode;
+}
+
+BOOLEAN Dbg::GetPauseMode()
+{
+	return Pause;
+}
+
+static int Dbg::WaitOptModule(const char* OriginalModuleName, const char* OptModuleName)
 {
 	if (!UseModule)
 		return -1;
@@ -204,9 +233,17 @@ int Dbg::WaitOptModule(const char* OriginalModuleName, const char* OptModuleName
 	return 0;
 }
 
-void Dbg::SetModule(BOOLEAN use)
+void Dbg::SetModule(BOOLEAN use, const char* OriginalModuleName, const char* ModuleCopyName)
 {
 	UseModule = use;
+	strcpy_s(CopyModule, MAX_PATH, ModuleCopyName);
+	strcpy_s(MainModule, MAX_PATH, OriginalModuleName);
+	Dbg::WaitOptModule(OriginalModuleName, ModuleCopyName);
+}
+
+char* Dbg::GetCopyModuleName()
+{
+	return CopyModule;
 }
 
 int Dbg::AssignThread(HANDLE Thread)
