@@ -1,8 +1,8 @@
 #include "rvdbg.h"
 
 BOOLEAN Dbg::tDSend;
-CRITICAL_SECTION repr;
-CONDITION_VARIABLE reprcondition;
+CRITICAL_SECTION Dbg::repr;
+CONDITION_VARIABLE Dbg::reprcondition;
 
 static void Dbg::HandleSSE()
 {
