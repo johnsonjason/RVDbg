@@ -7,20 +7,24 @@
 #include "..\Injector\injector.h"
 #include "..\IATResolution\iatresolve.h"
 
+#define PAUSE_ALL 0
+#define PAUSE_SINGLE 1
+#define PAUSE_CONTINUE 2
+
+#define IMMEDIATE_EXCEPTION 0
+#define PAGE_EXCEPTION 1
+#define ACCESS_EXCEPTION 2
 
 static BOOLEAN UseModule;
 
 static DWORD ExceptionComparator; // If the exception is the address compared
 static DWORD ExceptionCode; // The exception status code
 static DWORD AccessException;
-static DWORD SelectedAddress;
-static BYTE SelectedARegister;
 
+static BOOLEAN Pause; // {0 = complete pause ; 1 = only the thread being debugged is pause ; 2 = full continue}
 static BOOLEAN Debugger;
-extern BOOLEAN tDSend;
 
 static BOOLEAN ExceptionMode;
-static BOOLEAN ChunkExecutable;
 
 static PVOID Decision; // The code to jump to, what we would call the catch block
 static PVOID KiUserRealDispatcher; // the code to the real exception dispatcher
@@ -34,8 +38,14 @@ extern CONDITION_VARIABLE reprcondition;
 
 static std::vector<PVOID> Swaps;
 static HANDLE Threads[16];
+
 static Dispatcher::PoolSect Sector[128];
 static Dispatcher::PoolSect CurrentPool;
+
+static char CopyModule[MAX_PATH];
+static char MainModule[MAX_PATH];
+
+static BYTE g_Field[128];
 
 namespace Dbg
 {
@@ -104,12 +114,21 @@ namespace Dbg
 		xmm7,
 	};
 
+
+
 	static void HandleSSE();
+	static PVOID CallChainVPA();
 	static PVOID CallChain();
 	static void SetKiUser();
+	static void ResumeSelfThreads();
+	static int WaitOptModule(const char* OriginalModuleName, const char* OptModuleName);
+	void SetModule(BOOLEAN use, const char* OriginalModuleName, const char* ModuleCopyName);
+	char* GetCopyModuleName();
 
-	int WaitOptModule(const char* OriginalModuleName, const char* OptModuleName);
-	void SetModule(BOOLEAN use);
+	extern BOOLEAN tDSend;
+
+	void SetPauseMode(BOOLEAN PauseMode);
+	BOOLEAN GetPauseMode();
 
 	void AttachRVDbg();
 	void DetachRVDbg();
