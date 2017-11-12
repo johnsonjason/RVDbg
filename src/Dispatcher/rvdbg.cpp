@@ -4,57 +4,6 @@ BOOLEAN Dbg::tDSend;
 CRITICAL_SECTION Dbg::repr;
 CONDITION_VARIABLE Dbg::reprcondition;
 
-static void Dbg::HandleSSE()
-{
-	if (r_registers.bxmm0 == 1)
-		__asm movsd xmm0, r_registers.dxmm0;
-	else if (r_registers.bxmm0 == 2)
-		__asm movss xmm0, r_registers.xmm0;
-
-	if (r_registers.bxmm1)
-		__asm movsd xmm1, r_registers.dxmm1;
-	else if (r_registers.bxmm1 == 2)
-		__asm movss xmm1, r_registers.xmm1;
-
-	if (r_registers.bxmm2)
-		__asm movsd xmm2, r_registers.dxmm2;
-	else if (r_registers.bxmm2 == 2)
-		__asm movss xmm2, r_registers.xmm2;
-
-	if (r_registers.bxmm3)
-		__asm movsd xmm3, r_registers.dxmm3;
-	else if (r_registers.bxmm3 == 2)
-		__asm movss xmm3, r_registers.xmm3;
-
-	if (r_registers.bxmm4)
-		__asm movsd xmm4, r_registers.dxmm4;
-	else if (r_registers.bxmm4 == 2)
-		__asm movss xmm4, r_registers.xmm4;
-
-	if (r_registers.bxmm5)
-		__asm movsd xmm5, r_registers.dxmm5;
-	else if (r_registers.bxmm5 == 2)
-		__asm movss xmm5, r_registers.xmm5;
-
-	if (r_registers.bxmm6)
-		__asm movsd xmm6, r_registers.dxmm6;
-	else if (r_registers.bxmm6 == 2)
-		__asm movss xmm6, r_registers.xmm6;
-
-	if (r_registers.bxmm7)
-		__asm movsd xmm7, r_registers.dxmm7;
-	else if (r_registers.bxmm7 == 2)
-		__asm movss xmm7, r_registers.xmm7;
-	r_registers.bxmm0 = 0;
-	r_registers.bxmm1 = 0;
-	r_registers.bxmm2 = 0;
-	r_registers.bxmm3 = 0;
-	r_registers.bxmm4 = 0;
-	r_registers.bxmm5 = 0;
-	r_registers.bxmm6 = 0;
-	r_registers.bxmm7 = 0;
-}
-
 static void Dbg::ResumeSelfThreads()
 {
 	for (size_t iterator = 0; iterator < sizeof(Threads); iterator++)
@@ -198,6 +147,57 @@ static __declspec(naked) VOID NTAPI KiUserExceptionDispatcher(PEXCEPTION_RECORD 
 		jmp Decision; // jump to the catch block
 	}
 
+}
+
+static void Dbg::HandleSSE()
+{
+	if (r_registers.bxmm0 == 1)
+		__asm movsd xmm0, r_registers.dxmm0;
+	else if (r_registers.bxmm0 == 2)
+		__asm movss xmm0, r_registers.xmm0;
+
+	if (r_registers.bxmm1)
+		__asm movsd xmm1, r_registers.dxmm1;
+	else if (r_registers.bxmm1 == 2)
+		__asm movss xmm1, r_registers.xmm1;
+
+	if (r_registers.bxmm2)
+		__asm movsd xmm2, r_registers.dxmm2;
+	else if (r_registers.bxmm2 == 2)
+		__asm movss xmm2, r_registers.xmm2;
+
+	if (r_registers.bxmm3)
+		__asm movsd xmm3, r_registers.dxmm3;
+	else if (r_registers.bxmm3 == 2)
+		__asm movss xmm3, r_registers.xmm3;
+
+	if (r_registers.bxmm4)
+		__asm movsd xmm4, r_registers.dxmm4;
+	else if (r_registers.bxmm4 == 2)
+		__asm movss xmm4, r_registers.xmm4;
+
+	if (r_registers.bxmm5)
+		__asm movsd xmm5, r_registers.dxmm5;
+	else if (r_registers.bxmm5 == 2)
+		__asm movss xmm5, r_registers.xmm5;
+
+	if (r_registers.bxmm6)
+		__asm movsd xmm6, r_registers.dxmm6;
+	else if (r_registers.bxmm6 == 2)
+		__asm movss xmm6, r_registers.xmm6;
+
+	if (r_registers.bxmm7)
+		__asm movsd xmm7, r_registers.dxmm7;
+	else if (r_registers.bxmm7 == 2)
+		__asm movss xmm7, r_registers.xmm7;
+	r_registers.bxmm0 = 0;
+	r_registers.bxmm1 = 0;
+	r_registers.bxmm2 = 0;
+	r_registers.bxmm3 = 0;
+	r_registers.bxmm4 = 0;
+	r_registers.bxmm5 = 0;
+	r_registers.bxmm6 = 0;
+	r_registers.bxmm7 = 0;
 }
 
 static void Dbg::SetKiUser()
