@@ -15,13 +15,14 @@ Access Exceptions - This type of exception is a new idea in implementation, it w
 
 ## Screenshots
 
-RVDbg - GUI:
+**RVDbg - GUI:**
 
 ![alt text](https://i.imgur.com/vUek6Bf.png)
 
 Enumerates through the process list, thread list of the selected process, details the exception type, memory address the exception occurred at, the return address, a breakpoint list, and the dumped contents of the 32-bit x86 registers.
 
-Commandline:
+**RVDbg - Commandline:**
+
 ![alt_text](https://i.imgur.com/3PYyVLR.png)
 
 
