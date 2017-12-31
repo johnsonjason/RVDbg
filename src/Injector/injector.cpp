@@ -35,10 +35,8 @@ BOOL DLLInject(DWORD ID, const char* dll)
 	if (ObjectsResult == WAIT_OBJECT_0)
 	{
 		for (auto Object : Objects)
-			CloseHandle(Objects);
-
+			CloseHandle(Object);
 		VirtualFreeEx(Process, (LPVOID)Memory, 0, MEM_RELEASE);
-
 		return TRUE;
 	}
 	return FALSE;
