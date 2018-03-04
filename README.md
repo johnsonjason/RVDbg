@@ -14,6 +14,28 @@ Page Exceptions - Don't edit memory contents, they change the protection rights 
 
 Access Exceptions - This type of exception is a new idea in implementation, it will work the same way as page exceptions, except they're for memory that's being read or written to. It sets the page meant to be read or written to as the memory protection constant PAGE_NOACCESS. The CallChain routine will then watch all access/read exceptions that occur in the routine and solve them until the targeted address has an exception and it can debug the accessed data that way.
 
+## API Usage
+
+```Cpp
+
+    Dbg::AttachRVDbg();
+    Dbg::AssignThread(GetCurrentThread());
+
+    Dbg::SetPauseMode(PAUSE_CONTINUE);
+    Dbg::SetExceptionMode(IMMEDIATE_EXCEPTION);
+
+
+    while (GameActive)
+    {
+        Dispatcher::AddException(Dbg::GetSector(), Dbg::GetSectorSize(), IMMEDIATE_EXCEPTION, (DWORD)Warframe + CHECK_OFFSET);
+        WaitOnDebug();
+        Dbg::SetRegister(Dbg::EBP, (DWORD)CheckCopy);
+        Dbg::ContinueDebugger()
+    }
+    
+```
+    
+
 ## Screenshots
 
 **RVDbg - GUI:**
