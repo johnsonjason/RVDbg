@@ -37,7 +37,7 @@ DWORD WINAPI Repeater(LPVOID lpParam)
 			LeaveCriticalSection(&Dbg::repr);
 		}
 		if (Dbg::tDSend == TRUE)
-			send(Server, std::string("!DbgModeOn").c_str(), std::string("!DbgModeOn").size(), 0);
+			send(Server, "!DbgModeOn", strlen("!DbgModeOn"), 0);
 		Dbg::tDSend = FALSE;
 	}
 }
@@ -78,11 +78,14 @@ DWORD WINAPI Dispatch(PVOID lpParam)
 {	
 	WSAData wsaData;
 	WSAStartup(MAKEWORD(2, 2), &wsaData);
+	
 	Server = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	
 	ServerAddress = { 0 };
 	ServerAddress.sin_addr.s_addr = inet_addr("127.0.0.1");
 	ServerAddress.sin_port = htons(8888);
 	ServerAddress.sin_family = AF_INET;
+	
 	connect(Server, (SOCKADDR*)&ServerAddress, sizeof(ServerAddress));
 
 	Dbg::AttachRVDbg();
@@ -96,16 +99,16 @@ DWORD WINAPI Dispatch(PVOID lpParam)
 
 	char buffer[128];
 	char snbuffer[128];
-
 	DWORD Symbol = NULL;
 
 	while (TRUE)
 	{
+		std::string receiver;
+		
 		memset(buffer, 0, sizeof(buffer));
 		memset(snbuffer, 0, sizeof(snbuffer));
-
 		recv(Server, buffer, sizeof(buffer), 0);
-		std::string receiver;
+		
 		receiver = std::string(buffer);
 		
 		if (receiver.substr(0, std::string("!Symbol @").length()) == std::string("!Symbol @"))
@@ -113,28 +116,23 @@ DWORD WINAPI Dispatch(PVOID lpParam)
 			if (!receiver.substr(sizeof("!Symbol @ "), receiver.size()).empty())
 				sscanf(receiver.substr(sizeof("!Symbol @ "), receiver.size()).c_str(), "%X", &Symbol);
 		}
-
 		else if (receiver.substr(0, std::string("!setreg").length()) == std::string("!setreg"))
 		{
 			DWORD regv = strtol(receiver.substr(std::string("!setreg ? ").length(), receiver.length()).c_str(), NULL, 16);
 			RegisterValue(receiver.at(std::string("!setreg ").length()), regv);
 		}
-
 		else if (receiver.substr(0, std::string("!fsetreg").length()) == std::string("!fsetreg"))
 		{
 			double regv = strtod(receiver.substr(std::string("!fsetreg ? ").length(), receiver.length()).c_str(), NULL);
 			RegisterValueFP(receiver.at(std::string("!fsetreg ").length()), 0, regv);
 		}
-
 		else if (receiver.substr(0, std::string("!dsetreg").length()) == std::string("!dsetreg"))
 		{
 			double regv = strtod(receiver.substr(std::string("!dsetreg ? ").length(), receiver.length()).c_str(), NULL);
 			RegisterValueFP(receiver.at(std::string("!dsetreg ").length()), 1, regv);
 		}
-
 		else if (receiver == std::string("**ProtocolGUI"))
 			ProtocolGUI = TRUE;
-
 		else if (receiver == std::string("!Breakpoint"))
 		{
 			size_t ExceptionElement = Dispatcher::CheckSector(Dbg::GetSector(), 128);
@@ -158,6 +156,7 @@ DWORD WINAPI Dispatch(PVOID lpParam)
 		else if (receiver.substr(0, std::string("!Undo ").length()) == std::string("!Undo "))
 		{
 			int index = strtol(receiver.substr(std::string("!Undo ").length(), receiver.length()).c_str(), NULL, 12);
+			
 			if (index < Dbg::GetSectorSize())
 			{
 				DWORD OldProtect;
@@ -179,6 +178,7 @@ DWORD WINAPI Dispatch(PVOID lpParam)
 		else if (receiver == std::string("!Get"))
 		{
 			int index = Dispatcher::SearchSector(Dbg::GetSector(), Dbg::GetSectorSize(), Symbol);
+			
 			if (index < Dbg::GetSectorSize())
 			{
 				snprintf(snbuffer, sizeof(snbuffer), "$    Symbol: 0x%02X\r\n    Index:%d\r\n", Symbol, index);
@@ -187,24 +187,19 @@ DWORD WINAPI Dispatch(PVOID lpParam)
 			else
 				send(Server, "$    Symbol not registered", sizeof("$    Symbol not registered"), 0);
 		}
-
 		else if (receiver == std::string("!DbgGet"))
 			DbgIO::SendDbgGet(Server, Dbg::GetExceptionMode(), Dbg::GetPool());
-		
-
 		else if (receiver == std::string("!DbgDisplayRegisters"))
 			DbgIO::SendDbgRegisters(Server, ProtocolGUI, Dbg::GetExceptionAddress(), Dbg::GetRegisters());
 		else if (receiver == std::string("!xmm-f"))
 			DbgIO::SendDbgRegisters(Server, 2, Dbg::GetExceptionAddress(), Dbg::GetRegisters());
 		else if (receiver == std::string("!xmm-d"))
 			DbgIO::SendDbgRegisters(Server, 3, Dbg::GetExceptionAddress(), Dbg::GetRegisters());
-
 		else if (receiver == std::string("!DbgRun"))
 		{
 			if (Dbg::IsAEHPresent())
 				Dbg::ContinueDebugger();
 		}
-
 		else if (receiver == std::string("!Exit"))
 		{
 			if (Dbg::IsAEHPresent())
