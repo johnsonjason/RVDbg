@@ -27,7 +27,7 @@ Access Exceptions - This type of exception is a new idea in implementation, it w
 
     while (GameActive)
     {
-        Dispatcher::AddException(Dbg::GetSector(), Dbg::GetSectorSize(), IMMEDIATE_EXCEPTION, (DWORD)Warframe + CHECK_OFFSET);
+        Dispatcher::AddException(Dbg::GetSector(), Dbg::GetSectorSize(), IMMEDIATE_EXCEPTION, (DWORD)Game + CHECK_OFFSET);
         WaitOnDebug();
         Dbg::SetRegister(Dbg::EBP, (DWORD)CheckCopy);
         Dbg::ContinueDebugger()
