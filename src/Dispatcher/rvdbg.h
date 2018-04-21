@@ -14,6 +14,9 @@
 #define IMMEDIATE_EXCEPTION 0
 #define PAGE_EXCEPTION 1
 #define ACCESS_EXCEPTION 2
+#define MEMORY_EXCEPTION_CONTINUE 3
+
+#define MOD_OPT 30
 
 static BOOLEAN UseModule;
 
@@ -22,7 +25,6 @@ static DWORD ExceptionCode; // The exception status code
 static DWORD AccessException;
 
 static BOOLEAN Pause; // {0 = complete pause ; 1 = only the thread being debugged is pause ; 2 = full continue}
-static BOOLEAN Debugger;
 
 static BOOLEAN ExceptionMode;
 
@@ -33,11 +35,10 @@ static PVOID KiUser;
 static CONDITION_VARIABLE Runnable;
 static CRITICAL_SECTION RunLock;
 
-static std::vector<PVOID> Swaps;
 static HANDLE Threads[16];
 
 static Dispatcher::PoolSect Sector[128];
-static Dispatcher::PoolSect CurrentPool;
+static Dispatcher::PoolSect CurrentSection;
 
 static char CopyModule[MAX_PATH];
 static char MainModule[MAX_PATH];
@@ -49,6 +50,7 @@ namespace Dbg
 
 	struct VirtualRegisters
 	{
+		// general purpose registers
 		DWORD eax;
 		DWORD ebx;
 		DWORD ecx;
@@ -58,15 +60,18 @@ namespace Dbg
 		DWORD ebp;
 		DWORD esp;
 		PVOID eip;
+		// SSESet specifies whether xmm registers were modified
 		BOOLEAN SSESet;
-		BOOLEAN bxmm0;
+		// bxmm* - b is boolean, bxmm* specifies the type of precision used for the xmm register
+		BOOLEAN bxmm0; 
 		BOOLEAN bxmm1;
 		BOOLEAN bxmm2;
 		BOOLEAN bxmm3;
 		BOOLEAN bxmm4;
 		BOOLEAN bxmm5;
 		BOOLEAN bxmm6;
-		BOOLEAN bxmm7;
+		BOOLEAN bxmm7; 
+		// double precision registers
 		double dxmm0;
 		double dxmm1;
 		double dxmm2;
@@ -75,6 +80,7 @@ namespace Dbg
 		double dxmm5;
 		double dxmm6;
 		double dxmm7;
+		// single point precision registers
 		float xmm0;
 		float xmm1;
 		float xmm2;
@@ -111,20 +117,12 @@ namespace Dbg
 		xmm7,
 	};
 
-
-
-	static void HandleSSE();
-	static PVOID CallChainVPA();
-	static PVOID CallChain();
-	static void SetKiUser();
-	static void ResumeSelfThreads();
-	static int WaitOptModule(const char* OriginalModuleName, const char* OptModuleName);
 	void SetModule(BOOLEAN use, const char* OriginalModuleName, const char* ModuleCopyName);
 	char* GetCopyModuleName();
 
+	extern BOOLEAN Debugger;
 	extern CRITICAL_SECTION repr;
 	extern CONDITION_VARIABLE reprcondition;
-	extern BOOLEAN tDSend;
 
 	void SetPauseMode(BOOLEAN PauseMode);
 	BOOLEAN GetPauseMode();
@@ -140,7 +138,7 @@ namespace Dbg
 	void SetExceptionMode(BOOLEAN lExceptionMode);
 	BOOLEAN GetExceptionMode();
 	DWORD GetExceptionAddress();
-	Dispatcher::PoolSect GetPool();
+	Dispatcher::PoolSect GetCurrentSection();
 
 	BOOLEAN IsAEHPresent();
 
@@ -149,9 +147,6 @@ namespace Dbg
 
 	Dispatcher::PoolSect* GetSector();
 	int GetSectorSize();
-
 }
-
-static Dbg::VirtualRegisters r_registers;
 
 #endif
