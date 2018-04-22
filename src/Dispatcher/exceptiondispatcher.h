@@ -43,7 +43,7 @@ namespace Dispatcher
 	void RaiseBreakpointException(BYTE* ptr, BYTE save, BOOLEAN on);
 	void RaisePrivilegedCodeException(BYTE* ptr, BYTE save, BOOLEAN on);
 
-	PVOID Dispatcher::HandleException(Dispatcher::PoolSect segment, const char* ModuleName, BOOLEAN Constant);
+	PVOID HandleException(Dispatcher::PoolSect segment, const char* ModuleName, BOOLEAN Constant);
 	size_t CheckSector(PoolSect sector[], size_t size);
 	size_t SearchSector(PoolSect sector[], size_t size, DWORD address);
 	void UnlockSector(PoolSect sector[], size_t index);
