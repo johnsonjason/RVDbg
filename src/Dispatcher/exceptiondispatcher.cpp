@@ -3,148 +3,154 @@
 #include "exceptiondispatcher.h"
 #include "rvdbg.h"
 
-void Dispatcher::RaiseILGLAccessViolation(BYTE* ptr, BYTE save, BOOLEAN on)
+void dispatcher::raise_instr_av(std::uint8_t* ptr, std::uint8_t save, bool on)
 {
-	DWORD OldProtect;
+	std::uint32_t OldProtect;
 	switch (on)
 	{
-	case FALSE:
-		VirtualProtect(ptr, 1, PAGE_EXECUTE_READWRITE, &OldProtect);
-		*(BYTE*)ptr = save;
-		VirtualProtect(ptr, 1, OldProtect, &OldProtect);
+	case false:
+		VirtualProtect(ptr, 1, static_cast<unsigned long>(dbg_redef::page_protection::page_xrw), reinterpret_cast<unsigned long*>(&OldProtect));
+		*const_cast<std::uint8_t*>(ptr) = save;
+		VirtualProtect(ptr, 1, OldProtect, reinterpret_cast<unsigned long*>(&OldProtect));
 		return;
-	case TRUE:
-		VirtualProtect(ptr, 1, PAGE_EXECUTE_READWRITE, &OldProtect);
-		*(BYTE*)ptr = 0xFF;
-		VirtualProtect(ptr, 1, OldProtect, &OldProtect);
+	case true:
+		VirtualProtect(ptr, 1, static_cast<unsigned long>(dbg_redef::page_protection::page_xrw), reinterpret_cast<unsigned long*>(&OldProtect));
+		*const_cast<std::uint8_t*>(ptr) = 0xFF;
+		VirtualProtect(ptr, 1, OldProtect, reinterpret_cast<unsigned long*>(&OldProtect));
 		return;
 	}
 }
 
-void Dispatcher::RaisePageAccessViolation(BYTE* ptr, DWORD save, BOOLEAN on)
+void dispatcher::raise_page_av(std::uint8_t* ptr, std::uint32_t save, bool on)
 {
-	DWORD OldProtect;
+	std::uint32_t OldProtect;
 	switch (on)
 	{
-	case FALSE:
-		VirtualProtect(ptr, 1, save, &OldProtect);
+	case false:
+		VirtualProtect(ptr, 1, save, reinterpret_cast<unsigned long*>(&OldProtect));
 		return;
-	case TRUE:
-		VirtualProtect(ptr, 1, PAGE_READONLY, &OldProtect);
+	case true:
+		VirtualProtect(ptr, 1, static_cast<unsigned long>(dbg_redef::page_protection::page_ro), reinterpret_cast<unsigned long*>(&OldProtect));
 		return;
 	}
 }
 
-void Dispatcher::RaiseBreakpointException(BYTE* ptr, BYTE save, BOOLEAN on)
+void dispatcher::raise_breakpoint_excpt(std::uint8_t* ptr, std::uint8_t save, bool on)
 {
-	DWORD OldProtect;
+	std::uint32_t OldProtect;
 	switch (on)
 	{
-	case FALSE:
-		VirtualProtect(ptr, 1, PAGE_EXECUTE_READWRITE, &OldProtect);
-		*(BYTE*)ptr = save;
-		VirtualProtect(ptr, 1, OldProtect, &OldProtect);
+	case false:
+		VirtualProtect(ptr, 1, static_cast<unsigned long>(dbg_redef::page_protection::page_xrw), reinterpret_cast<unsigned long*>(&OldProtect));
+		*const_cast<std::uint8_t*>(ptr) = save;
+		VirtualProtect(ptr, 1, OldProtect, reinterpret_cast<unsigned long*>(&OldProtect));
 		return;
-	case TRUE:
-		VirtualProtect(ptr, 1, PAGE_EXECUTE_READWRITE, &OldProtect);
-		*(BYTE*)ptr = 0xCC;
-		VirtualProtect(ptr, 1, OldProtect, &OldProtect);
+	case true:
+		VirtualProtect(ptr, 1, static_cast<unsigned long>(dbg_redef::page_protection::page_xrw), reinterpret_cast<unsigned long*>(&OldProtect));
+		*const_cast<std::uint8_t*>(ptr) = 0xCC;
+		VirtualProtect(ptr, 1, OldProtect, reinterpret_cast<unsigned long*>(&OldProtect));
 		return;
 	}
 }
 
-void Dispatcher::RaisePrivilegedCodeException(BYTE* ptr, BYTE save, BOOLEAN on)
+void dispatcher::raise_priv_code_excpt(std::uint8_t* ptr, std::uint8_t save, bool on)
 {
-	DWORD OldProtect;
+	std::uint32_t OldProtect;
 	switch (on)
 	{
-	case FALSE:
-		VirtualProtect(ptr, 1, PAGE_EXECUTE_READWRITE, &OldProtect);
-		*(BYTE*)ptr = save;
-		VirtualProtect(ptr, 1, OldProtect, &OldProtect);
+	case false:
+		VirtualProtect(ptr, 1, static_cast<unsigned long>(dbg_redef::page_protection::page_xrw), reinterpret_cast<unsigned long*>(&OldProtect));
+		*const_cast<std::uint8_t*>(ptr) = save;
+		VirtualProtect(ptr, 1, OldProtect, reinterpret_cast<unsigned long*>(&OldProtect));
 		return;
-	case TRUE:
-		VirtualProtect(ptr, 1, PAGE_EXECUTE_READWRITE, &OldProtect);
-		*(BYTE*)ptr = 0xF4;
-		VirtualProtect(ptr, 1, OldProtect, &OldProtect);
+	case true:
+		VirtualProtect(ptr, 1, static_cast<unsigned long>(dbg_redef::page_protection::page_xrw), reinterpret_cast<unsigned long*>(&OldProtect));
+		*const_cast<std::uint8_t*>(ptr) = 0xF4;
+		VirtualProtect(ptr, 1, OldProtect, reinterpret_cast<unsigned long*>(&OldProtect));
 		return;
 	}
 }
 
-PVOID Dispatcher::HandleException(Dispatcher::PoolSect segment, const char* module_name, BOOLEAN b_module)
+void* dispatcher::handle_exception(dispatcher::pool_sect segment, std::string module_name, bool b_module)
 {
-	segment.UseModule = b_module;
-	switch (segment.ExceptionCode)
+	segment.use_module = b_module;
+	switch (segment.dbg_exception_code)
 	{
-	case STATUS_ACCESS_VIOLATION:
-		Dispatcher::RaiseILGLAccessViolation((BYTE*)segment.ExceptionAddress, segment.SaveCode, FALSE);
-		if (segment.UseModule)
-			return (PVOID)((DWORD)GetModuleHandleA(module_name) + segment.ExceptionOffset);
-		return (PVOID)segment.ExceptionAddress;
-	case STATUS_BREAKPOINT:
-		Dispatcher::RaiseBreakpointException((BYTE*)segment.ExceptionAddress, segment.SaveCode, FALSE);
-		if (segment.UseModule)
-			return (PVOID)((DWORD)GetModuleHandleA(module_name) + segment.ExceptionOffset);
-		return (PVOID)segment.ExceptionAddress;
-	case STATUS_PRIVILEGED_INSTRUCTION:
-		Dispatcher::RaisePrivilegedCodeException((BYTE*)segment.ExceptionAddress, segment.SaveCode, FALSE);
-		if (segment.UseModule)
-			return (PVOID)((DWORD)GetModuleHandleA(module_name) + segment.ExceptionOffset);
-		return (PVOID)segment.ExceptionAddress;
+	case static_cast<std::uint32_t>(dbg_redef::exception_status_code::access_violation):
+		dispatcher::raise_instr_av(reinterpret_cast<std::uint8_t*>(segment.dbg_exception_address), segment.save_code, false);
+		if (segment.use_module)
+		{
+			return reinterpret_cast<void*>(reinterpret_cast<std::uint32_t>(GetModuleHandleA(module_name.c_str())) + segment.dbg_exception_offset);
+		}
+		return reinterpret_cast<void*>(segment.dbg_exception_address);
+	case static_cast<std::uint32_t>(dbg_redef::exception_status_code::breakpoint_exception):
+		dispatcher::raise_breakpoint_excpt(reinterpret_cast<std::uint8_t*>(segment.dbg_exception_address), segment.save_code, false);
+		if (segment.use_module)
+		{
+			return reinterpret_cast<void*>(reinterpret_cast<std::uint32_t>(GetModuleHandleA(module_name.c_str())) + segment.dbg_exception_offset);
+		}
+		return reinterpret_cast<void*>(segment.dbg_exception_address);
+	case static_cast<std::uint32_t>(dbg_redef::exception_status_code::privileged_instruction):
+		dispatcher::raise_priv_code_excpt(reinterpret_cast<std::uint8_t*>(segment.dbg_exception_address), segment.save_code, false);
+		if (segment.use_module)
+		{
+			return reinterpret_cast<void*>(reinterpret_cast<std::uint32_t>(GetModuleHandleA(module_name.c_str())) + segment.dbg_exception_offset);
+		}
+		return reinterpret_cast<void*>(segment.dbg_exception_address);
 	}
-
-	return NULL;
+	return nullptr;
 }
 
-size_t Dispatcher::CheckSector(Dispatcher::PoolSect sector[], size_t size)
+std::size_t dispatcher::check_sector(std::array<dispatcher::pool_sect, 128>& sector)
 {
-	for (size_t iterator = 0; iterator < size; iterator++)
+	for (std::size_t iterator = 0; iterator < sector.size(); iterator++)
 	{
-		if (sector[iterator].Used == FALSE)
+		if (sector[iterator].used == false)
 			return iterator;
 	}
-	return (size + 1);
+	return (sector.size() + 1);
 }
 
-size_t Dispatcher::SearchSector(Dispatcher::PoolSect sector[], size_t size, DWORD address)
+std::size_t dispatcher::search_sector(std::array<dispatcher::pool_sect, 128>& sector, std::uint32_t address)
 {
-	for (size_t iterator = 0; iterator < size; iterator++)
+	for (std::size_t iterator = 0; iterator < sector.size(); iterator++)
 	{
-		if (sector[iterator].Used == TRUE && sector[iterator].IsAEHPresent == FALSE 
-			&& sector[iterator].ExceptionAddress == address)
+		if (sector[iterator].used == true && sector[iterator].is_aeh_present == false 
+			&& sector[iterator].dbg_exception_address == address)
 			return iterator;
 	}
-	return (size + 1);
+	return (sector.size() + 1);
+}
+
+void dispatcher::unlock_sector(std::array<dispatcher::pool_sect, 128>& sector, std::size_t index)
+{
+	dispatcher::pool_sect filled_segment = { 0 };
+	std::fill_n(stdext::checked_array_iterator<dispatcher::pool_sect*>(&sector[index], 
+		sizeof(dispatcher::pool_sect)), sizeof(dispatcher::pool_sect), filled_segment);
+}
+
+void dispatcher::lock_sector(std::array<dispatcher::pool_sect, 128>& sector, std::size_t index)
+{
+	sector[index].used = true;
+	sector[index].is_aeh_present = false;
 }
 
 
-void Dispatcher::UnlockSector(Dispatcher::PoolSect sector[], size_t index)
+void dispatcher::add_exception(std::array<dispatcher::pool_sect, 128>& sector, std::size_t index, dispatcher::exception_type type, std::uint32_t dbg_exception_address)
 {
-	memset(&sector[index], NULL, sizeof(Dispatcher::PoolSect));
-}
+	sector[index].dbg_exception_address = dbg_exception_address;
+	sector[index].save_code = *(std::uint32_t*)dbg_exception_address;
+	sector[index].dbg_exception_type = type;
+	sector[index].index = index;
+	dispatcher::lock_sector(sector, index);
 
-void Dispatcher::LockSector(Dispatcher::PoolSect sector[], size_t index)
-{
-	sector[index].Used = TRUE;
-	sector[index].IsAEHPresent = FALSE;
-}
-
-
-void Dispatcher::AddException(Dispatcher::PoolSect sector[], size_t index, BOOLEAN Type, DWORD ExceptionAddress)
-{
-	sector[index].ExceptionAddress = ExceptionAddress;
-	sector[index].SaveCode = *(DWORD*)ExceptionAddress;
-	sector[index].ExceptionType = Type;
-	sector[index].Index = index;
-	Dispatcher::LockSector(sector, index);
-
-	switch (Type)
+	switch (type)
 	{
-	case IMMEDIATE_EXCEPTION:
-		Dispatcher::RaisePrivilegedCodeException((BYTE*)sector[index].ExceptionAddress, 0, TRUE);
+	case dispatcher::exception_type::immediate_exception:
+		dispatcher::raise_priv_code_excpt((std::uint8_t*)sector[index].dbg_exception_address, 0, true);
 		return;
-	case PAGE_EXCEPTION:
-		Dispatcher::RaisePageAccessViolation((BYTE*)sector[index].ExceptionAddress, 0, TRUE);
+	case dispatcher::exception_type::page_exception:
+		dispatcher::raise_page_av((std::uint8_t*)sector[index].dbg_exception_address, 0, true);
 		return;
 	}
 
