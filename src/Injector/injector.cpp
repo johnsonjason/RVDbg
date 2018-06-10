@@ -1,43 +1,45 @@
+#include "stdafx.h"
 #include "injector.h"
 
-BOOL DLLInject(DWORD ID, const char* dll)
+bool dll_inject(std::uint32_t id, const char* dll)
 
 {
-	HANDLE Process = NULL;
-	HANDLE RemoteThread = NULL;
+	HANDLE process = nullptr;
+	HANDLE remote_thread = nullptr;
+	void* memory;
+	void* load_library;
 
-	HANDLE Objects[2] = { RemoteThread, Process };
-
-	LPVOID Memory;
-
-	LPVOID LoadLibrary;
-
-	if (!ID)
+	if (!id)
 		return false;
 
-	Process = OpenProcess(PROCESS_ALL_ACCESS, FALSE, ID);
+	process = OpenProcess(PROCESS_ALL_ACCESS, static_cast<std::uint8_t>(false), id);
 
-	LoadLibrary = (LPVOID)GetProcAddress(GetModuleHandleA("kernel32.dll"), "LoadLibraryA");
+	load_library = reinterpret_cast<void*>(GetProcAddress(GetModuleHandleA("kernel32.dll"), "LoadLibraryA"));
 
-	Memory = (LPVOID)VirtualAllocEx(Process, NULL, strlen(dll) + 1, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
-	if (Memory == NULL)
-		return 6;
+	memory = const_cast<void*>(VirtualAllocEx(process, nullptr, strlen(dll) + 1, 
+		MEM_RESERVE | MEM_COMMIT, static_cast<std::uint32_t>(dbg_redef::page_protection::page_xrw)));
 
-	if (WriteProcessMemory(Process, (LPVOID)Memory, dll, strlen(dll) + 1, NULL) == 0)
-		return 7;
+	if (memory == nullptr)
+		return GetLastError();
 
-	RemoteThread = CreateRemoteThread(Process, NULL, NULL, (LPTHREAD_START_ROUTINE)LoadLibrary, (LPVOID)Memory, NULL, NULL);
-	if (RemoteThread == NULL)
-		return 8;
+	if (WriteProcessMemory(process, const_cast<void*>(memory), dll, strlen(dll) + 1, nullptr) == 0)
+		return GetLastError();
 
-	DWORD ObjectsResult = WaitForMultipleObjects(2, Objects, TRUE, INFINITE);
+	remote_thread = CreateRemoteThread(process, nullptr, dbg_redef::nullval, (LPTHREAD_START_ROUTINE)load_library, 
+		const_cast<void*>(memory), dbg_redef::nullval, nullptr);
 
-	if (ObjectsResult == WAIT_OBJECT_0)
+	if (remote_thread == nullptr)
+		return GetLastError();
+
+	std::uint32_t objects_result = WaitForSingleObject(remote_thread, dbg_redef::infinite);
+
+	if (objects_result == WAIT_OBJECT_0)
 	{
-		for (auto Object : Objects)
-			CloseHandle(Object);
-		VirtualFreeEx(Process, (LPVOID)Memory, 0, MEM_RELEASE);
-		return TRUE;
+		CloseHandle(process);
+		CloseHandle(remote_thread);
+		VirtualFreeEx(process, const_cast<void*>(memory), 0, MEM_RELEASE);
+		return true;
 	}
-	return FALSE;
+
+	return false;
 }
