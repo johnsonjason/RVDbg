@@ -1,61 +1,63 @@
+#include "stdafx.h"
 #include "execthread.h"
 
-void SuspendThreads(DWORD ProcessId, DWORD ExceptThreadId)
+void suspend_threads(std::uint32_t process_id, std::uint32_t except_thread_id)
 {
-	HANDLE Snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
-	if (Snapshot != INVALID_HANDLE_VALUE)
+	HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+	if (snapshot != INVALID_HANDLE_VALUE)
 	{
-		THREADENTRY32 ThreadEntry;
-		ThreadEntry.dwSize = sizeof(ThreadEntry);
-		if (Thread32First(Snapshot, &ThreadEntry))
+		THREADENTRY32 thread_entry;
+		thread_entry.dwSize = sizeof(thread_entry);
+		if (Thread32First(snapshot, &thread_entry))
 		{
 			do
 			{
-				if (ThreadEntry.dwSize >= FIELD_OFFSET(THREADENTRY32, th32OwnerProcessID) + sizeof(ThreadEntry.th32OwnerProcessID))
+				if (thread_entry.dwSize >= FIELD_OFFSET(THREADENTRY32, th32OwnerProcessID) + sizeof(thread_entry.th32OwnerProcessID))
 				{
-					if (ThreadEntry.th32ThreadID != ExceptThreadId && ThreadEntry.th32OwnerProcessID == ProcessId)
+					if (thread_entry.th32ThreadID != except_thread_id && thread_entry.th32OwnerProcessID == process_id)
 					{
-						HANDLE Thread = OpenThread(THREAD_ALL_ACCESS, FALSE, ThreadEntry.th32ThreadID);
-						if (Thread != NULL)
+						HANDLE thread = OpenThread(THREAD_ALL_ACCESS, static_cast<std::uint8_t>(false), thread_entry.th32ThreadID);
+						if (thread != nullptr)
 						{
-							SuspendThread(Thread);
-							CloseHandle(Thread);
+							SuspendThread(thread);
+							CloseHandle(thread);
 						}
 					}
 				}
-				ThreadEntry.dwSize = sizeof(ThreadEntry);
-			} while (Thread32Next(Snapshot, &ThreadEntry));
+				thread_entry.dwSize = sizeof(thread_entry);
+			} while (Thread32Next(snapshot, &thread_entry));
 		}
-		CloseHandle(Snapshot);
+		CloseHandle(snapshot);
 	}
 }
 
-void ResumeThreads(DWORD ProcessId, DWORD ExceptThreadId)
+void resume_threads(std::uint32_t process_id, std::uint32_t except_thread_id)
 {
-	HANDLE Snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
-	if (Snapshot != INVALID_HANDLE_VALUE)
+	HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+	if (snapshot != INVALID_HANDLE_VALUE)
 	{
-		THREADENTRY32 ThreadEntry;
-		ThreadEntry.dwSize = sizeof(ThreadEntry);
-		if (Thread32First(Snapshot, &ThreadEntry))
+		THREADENTRY32 thread_entry;
+		thread_entry.dwSize = sizeof(thread_entry);
+		if (Thread32First(snapshot, &thread_entry))
 		{
 			do
 			{
-				if (ThreadEntry.dwSize >= FIELD_OFFSET(THREADENTRY32, th32OwnerProcessID) + sizeof(ThreadEntry.th32OwnerProcessID))
+				if (thread_entry.dwSize >= FIELD_OFFSET(THREADENTRY32, th32OwnerProcessID) + sizeof(thread_entry.th32OwnerProcessID))
 				{
-					if (ThreadEntry.th32ThreadID != ExceptThreadId && ThreadEntry.th32OwnerProcessID == ProcessId)
+					if (thread_entry.th32ThreadID != except_thread_id && thread_entry.th32OwnerProcessID == process_id)
 					{
-						HANDLE Thread = OpenThread(THREAD_ALL_ACCESS, FALSE, ThreadEntry.th32ThreadID);
-						if (Thread != NULL)
+						HANDLE thread = OpenThread(THREAD_ALL_ACCESS, static_cast<std::uint8_t>(false), thread_entry.th32ThreadID);
+						if (thread != nullptr)
 						{
-							ResumeThread(Thread);
-							CloseHandle(Thread);
+							ResumeThread(thread);
+							CloseHandle(thread);
 						}
 					}
 				}
-				ThreadEntry.dwSize = sizeof(ThreadEntry);
-			} while (Thread32Next(Snapshot, &ThreadEntry));
+				thread_entry.dwSize = sizeof(thread_entry);
+			} while (Thread32Next(snapshot, &thread_entry));
 		}
-		CloseHandle(Snapshot);
+		CloseHandle(snapshot);
 	}
 }
+
