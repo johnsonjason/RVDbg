@@ -1,116 +1,119 @@
 #include "stdafx.h"
 #include "rvdbg.h"
 
-BOOLEAN Dbg::Debugger;
-CRITICAL_SECTION Dbg::repr;
-CONDITION_VARIABLE Dbg::reprcondition;
-static Dbg::VirtualRegisters r_registers;
+bool rvdbg::debugger;
+CRITICAL_SECTION rvdbg::repr;
+CONDITION_VARIABLE rvdbg::reprcondition;
+static rvdbg::virtual_registers r_registers;
+static HANDLE thread_pool[16];
+static void* dbg_decision; // The code to jump to, what we would call the catch block
+static void* kiuser_realdispatcher; // the code to the real exception dispatcher
+static void* kiuser;
+static std::uint32_t exception_comparator; // If the exception is the address compared
+static std::uint32_t dbg_exception_code; // The exception status code
+static std::uint32_t access_exception;
+static std::array<dispatcher::pool_sect, 128> sector;
+static dispatcher::pool_sect current_section;
+static rvdbg::suspension_mode pause; // {0 = complete pause ; 1 = only the thread being debugged is pause ; 2 = full continue}
+static std::string copy_module;
+static std::string main_module;
 
-static void HandleSSE();
+static dispatcher::exception_type exception_mode;
 
-/* Resume exception-type threads */
-static void ResumeSelfThreads()
+static void handle_sse();
+
+/* Resume exception-type thread_pool */
+static void self_resume_threads()
 {
-	for (size_t iterator = 0; iterator < sizeof(Threads); iterator++)
+	for (std::size_t iterator = 0; iterator < sizeof(thread_pool); iterator++)
 	{
-		if (Threads[iterator] != NULL)
-			ResumeThread(Threads[iterator]);
+		if (thread_pool[iterator] != nullptr)
+			ResumeThread(thread_pool[iterator]);
 	}
 }
 
 /* WIP, will be used for page exceptions */
-static PVOID CallChainVPA()
+static void* call_chain_vpa()
 {
-	size_t ExceptionElement = SearchSector(Sector, 128, ExceptionComparator);
-	if (ExceptionElement > 128)
-		return NULL;
-	return NULL;
+	std::size_t exception_element = dispatcher::search_sector(sector, exception_comparator);
+	if (exception_element > sector.size())
+		return nullptr;
+	return nullptr;
 }
 
-static PVOID CallChain()
+static void* call_chain()
 {
 	// Search a sector for a listed exception
-	size_t ExceptionElement = SearchSector(Sector, Dbg::GetSectorSize(), ExceptionComparator); 
+	std::size_t exception_element = dispatcher::search_sector(sector, exception_comparator); 
 
-	// If sector does not contain exception element
-	if (ExceptionElement > Dbg::GetSectorSize()) 
+	if (exception_element > sector.size())
 	{
 		// If true, used to bypass memory integrity checks
-		if (ExceptionMode == MEMORY_EXCEPTION_CONTINUE) 
-			// returns executable memory address in a copied module
-			return (GetModuleHandleA(Dbg::GetCopyModuleName()) + (ExceptionComparator - (DWORD)GetModuleHandleA(MainModule))); 
-		// if not MEMORY_EXCEPTION_CONTINUE, return unhandled exception
-		return NULL; 
+		if (exception_mode == dispatcher::exception_type::memory_exception_continue)
+		{
+			return (GetModuleHandleA(rvdbg::get_copy_module_name().c_str()) + 
+				(exception_comparator - reinterpret_cast<std::uint32_t>(GetModuleHandleA(main_module.c_str()))));
+		}
+		return nullptr; 
 	}
 
-	/*
-	* PAUSE_ALL = Pauses all threads
-	* PAUSE_ALL ^ MOD_OPT = Pauses all threads, but with the module option; the module option specifies that execution will continue in another module
-	*/
-	if (Dbg::GetPauseMode() == PAUSE_ALL || Dbg::GetPauseMode() == PAUSE_ALL ^ MOD_OPT)
+	if (rvdbg::get_pause_mode() == rvdbg::suspension_mode::suspend_all || 
+		static_cast<std::uint32_t>(rvdbg::get_pause_mode()) == static_cast<uint32_t>(rvdbg::suspension_mode::suspend_all) ^ MOD_OPT)
 	{
-		// Suspend all threads except this debugger thread
-		SuspendThreads(GetCurrentProcessId(), GetCurrentThreadId()); 
-		// Set the debugger flag to true, a debugger is currently in session for this process
-		Dbg::Debugger = TRUE;
-		// wake the condition variable in the main module loop
-		WakeConditionVariable(&Dbg::reprcondition); 
-		// Resume all threads assigned to the thread-excepted pool
-		ResumeSelfThreads(); 
+		suspend_threads(GetCurrentProcessId(), GetCurrentThreadId()); 
+		rvdbg::debugger = true;
+		WakeConditionVariable(&rvdbg::reprcondition); 
+		self_resume_threads(); 
 	}
 
-	// Used in the dispatcher-exception-handler's switch statement, decides what type of exception to be used
-	Sector[ExceptionElement].ExceptionCode = ExceptionCode; 
-	if (Dbg::GetPauseMode() == PAUSE_ALL ^ MOD_OPT || Dbg::GetPauseMode() == PAUSE_SINGLE ^ MOD_OPT || Dbg::GetPauseMode() == PAUSE_CONTINUE ^ MOD_OPT)
+	sector[exception_element].dbg_exception_code = dbg_exception_code; 
+
+	if (static_cast<std::uint32_t>(rvdbg::get_pause_mode()) == static_cast<std::uint32_t>(rvdbg::suspension_mode::suspend_all) ^ MOD_OPT || 
+		static_cast<std::uint32_t>(rvdbg::get_pause_mode()) == static_cast<std::uint32_t>(rvdbg::suspension_mode::suspend_single) ^ MOD_OPT || 
+		static_cast<std::uint32_t>(rvdbg::get_pause_mode()) == static_cast<std::uint32_t>(rvdbg::suspension_mode::suspend_continue) ^ MOD_OPT)
 	{
-		// Module option supplied, handle exception and set future EIP to module-copy
-		r_registers.eip = Dispatcher::HandleException(Sector[ExceptionElement], Sector[ExceptionElement].ModuleName, TRUE); 
+		r_registers.eip = dispatcher::handle_exception(sector[exception_element], sector[exception_element].module_name, true); 
 	}
 	else
 	{
-		// No module option, regular handling, future EIP is the exception address
-		r_registers.eip = Dispatcher::HandleException(Sector[ExceptionElement], Sector[ExceptionElement].ModuleName, FALSE); 
+		r_registers.eip = dispatcher::handle_exception(sector[exception_element], sector[exception_element].module_name, false); 
 	}
 	
-	Sector[ExceptionElement].ThreadId = GetCurrentThreadId();
-	Sector[ExceptionElement].Thread = GetCurrentThread();
-	// Set the flag to true, notifying that the arbitrary exception handler is present for this section
-	Sector[ExceptionElement].IsAEHPresent = TRUE; 
-	// the return address for this exception context
-	Sector[ExceptionElement].ReturnAddress = r_registers.ReturnAddress; 
+	sector[exception_element].thread_id = GetCurrentThreadId();
+	sector[exception_element].thread = GetCurrentThread();
+	sector[exception_element].is_aeh_present = true; 
+	sector[exception_element].return_address = r_registers.return_address; 
 
-	CurrentSection = Sector[ExceptionElement];
+	current_section = sector[exception_element];
 
-	if (Dbg::GetPauseMode() == PAUSE_ALL || Dbg::GetPauseMode() == PAUSE_SINGLE || Dbg::GetPauseMode() == PAUSE_CONTINUE || 
-		Dbg::GetPauseMode() == Dbg::GetPauseMode() == PAUSE_ALL ^ MOD_OPT || Dbg::GetPauseMode() == PAUSE_SINGLE ^ MOD_OPT || PAUSE_CONTINUE ^ MOD_OPT  )
+	if (rvdbg::get_pause_mode() == rvdbg::suspension_mode::suspend_all || 
+		rvdbg::get_pause_mode() == rvdbg::suspension_mode::suspend_single || 
+		static_cast<std::uint32_t>(rvdbg::get_pause_mode()) ==  static_cast<std::uint32_t>(rvdbg::suspension_mode::suspend_all) ^ MOD_OPT || 
+		static_cast<std::uint32_t>(rvdbg::get_pause_mode()) == static_cast<std::uint32_t>(rvdbg::suspension_mode::suspend_single) ^ MOD_OPT)
 	{
-		EnterCriticalSection(&RunLock);
-		// Put the debugger in a waiting state to allow user response until the debugger is continued
-		SleepConditionVariableCS(&Runnable, &RunLock, INFINITE); 
-		LeaveCriticalSection(&RunLock);
-		// Resume all threads
-		if (Dbg::GetPauseMode() != PAUSE_SINGLE && Dbg::GetPauseMode() != PAUSE_CONTINUE)
-			ResumeThreads(GetCurrentProcessId(), GetCurrentThreadId()); 
+		EnterCriticalSection(&run_lock);
+		SleepConditionVariableCS(&run_condition, &run_lock, dbg_redef::infinite); 
+		LeaveCriticalSection(&run_lock);
+		if (rvdbg::get_pause_mode() != rvdbg::suspension_mode::suspend_single && 
+			rvdbg::get_pause_mode() != rvdbg::suspension_mode::suspend_continue)
+		{
+			resume_threads(GetCurrentProcessId(), GetCurrentThreadId());
+		}
 	}
 
-	// Free space in the sector list
-	Dispatcher::UnlockSector(Sector, ExceptionElement);
-	// If PAUSE_CONTINUE, then add another exception sector at the same location
-	if (Dbg::GetPauseMode() == PAUSE_CONTINUE)
-	{
-		// Check the sector list for space
-		size_t step_element = Dispatcher::CheckSector(Dbg::GetSector(), Dbg::GetSectorSize());
-		// Add the exception to the sector
-		Dispatcher::AddException(Dbg::GetSector(), step_element, ExceptionMode, Sector[ExceptionElement].ExceptionAddress);
-	}
-	// Debugger session not active
-	Dbg::Debugger = FALSE;
+	dispatcher::unlock_sector(sector, exception_element);
 
-	// Return with the exception address to jump back to
+	if (rvdbg::get_pause_mode() == rvdbg::suspension_mode::suspend_continue)
+	{
+		std::size_t step_element = dispatcher::check_sector(rvdbg::get_sector());
+		dispatcher::add_exception(rvdbg::get_sector(), step_element, exception_mode, sector[exception_element].dbg_exception_address);
+	}
+
+	rvdbg::debugger = false;
 	return r_registers.eip;
 }
 
-static __declspec(naked) VOID NTAPI KiUserExceptionDispatcher(PEXCEPTION_RECORD ExceptionRecord, PCONTEXT Context)
+static __declspec(naked) void __stdcall KiUserExceptionDispatcher(PEXCEPTION_RECORD ExceptionRecord, PCONTEXT Context)
 {
 	__asm
 	{
@@ -143,49 +146,49 @@ static __declspec(naked) VOID NTAPI KiUserExceptionDispatcher(PEXCEPTION_RECORD 
 		mov r_registers.esp, eax;
 
 		mov eax, [eax];
-		mov r_registers.ReturnAddress, eax;
+		mov r_registers.return_address, eax;
 
 		// [esp + 0x14] contains the exception address
 		mov eax, [esp + 0x14]; 
-		// move into the ExceptionComparator, aka the address to be compared with the exception address
-		mov[ExceptionComparator], eax; 
+		// move into the exception_comparator, aka the address to be compared with the exception address
+		mov[exception_comparator], eax; 
 		// [esp + 0x0C] contains the exception code
 		mov eax, [esp + 0x08]; 
-		// move into the ExceptionCode global.
-		mov[ExceptionCode], eax; 
+		// move into the dbg_exception_code global.
+		mov[dbg_exception_code], eax; 
 		mov eax, [esp + 20];
 		// when access exceptions are enabled, move the accessed memory address here
-		mov[AccessException], eax;
+		mov[access_exception], eax;
 	}
 	
 	// Jump to an assigned exception handler for the exception mode
-	switch (Dbg::GetExceptionMode())
+	switch (rvdbg::get_exception_mode())
 	{
-	case 0:
-		// Initiate the CallChain function used for immediate/execution exceptions
-		Decision = (PVOID)CallChain(); 
+	case dispatcher::exception_type::immediate_exception:
+		// Initiate the call_chain function used for immediate/execution exceptions
+		dbg_decision = static_cast<void*>(call_chain()); 
 		break;
-	case 1:
-		// Initiate the CallChainVPA function used for page exceptions
-		Decision = (PVOID)CallChainVPA();
+	case dispatcher::exception_type::access_exception:
+		// Initiate the call_chain_vpa function used for page exceptions
+		dbg_decision = static_cast<void*>(call_chain_vpa());
 		break;
 	}
 
-	// if the decision is zero, then jump back to the real dispatcher
-	if (!Decision)
+	// if the dbg_decision is zero, then jump back to the real dispatcher
+	if (!dbg_decision)
 	{
 		__asm
 		{
 			mov eax, r_registers.eax;
 			mov ecx, [esp + 04];
 			mov ebx, [esp];
-			jmp KiUserRealDispatcher;
+			jmp kiuser_realdispatcher;
 		}
 	}
 
-	if (r_registers.SSESet == TRUE)
-		HandleSSE();
-	r_registers.SSESet = FALSE;
+	if (r_registers.sse_set == true)
+		handle_sse();
+	r_registers.sse_set = false;
 
 	__asm
 	{
@@ -198,79 +201,83 @@ static __declspec(naked) VOID NTAPI KiUserExceptionDispatcher(PEXCEPTION_RECORD 
 		// [esp + 0x11c] contains stack initation information such as the return address, arguments, etc...
 		mov esp, r_registers.esp;
 		// jump to the catch block
-		jmp Decision;
+		jmp dbg_decision;
 	}
 
 }
 
 /* Get and set essential hook information */
-static void SetKiUser()
+static void set_kiuser()
 {
 	// Hook, tampered exception dispatcher later
-	KiUser = (PVOID)GetProcAddress(GetModuleHandleA("ntdll.dll"), "KiUserExceptionDispatcher"); 
+	kiuser = static_cast<void*>(GetProcAddress(GetModuleHandleA("ntdll.dll"), "KiUserExceptionDispatcher")); 
 	// If something fails, will jump back to the real dispatcher
-	KiUserRealDispatcher = (PVOID)GetProcAddress(GetModuleHandleA("ntdll.dll"), "KiUserExceptionDispatcher");
+	kiuser_realdispatcher = static_cast<void*>(GetProcAddress(GetModuleHandleA("ntdll.dll"), "KiUserExceptionDispatcher"));
 
-	DWORD KiUserRealDispatcher2 = (DWORD)KiUserRealDispatcher + 8;
-	DWORD KiUser2 = (DWORD)KiUser + 1;
+	std::uint32_t kiuser_realdispatcher2 = static_cast<std::uint32_t>(reinterpret_cast<std::uint32_t>(kiuser_realdispatcher) + 8);
+	std::uint32_t kiuser2 = static_cast<std::uint32_t>(reinterpret_cast<std::uint32_t>(kiuser) + 1);
 
-	KiUser = (PVOID)KiUser2;
-	KiUserRealDispatcher = (PVOID)KiUserRealDispatcher2;
+	kiuser = reinterpret_cast<void*>(kiuser2);
+	kiuser_realdispatcher = reinterpret_cast<void*>(kiuser_realdispatcher2);
 }
 
 /* Set the pause-specification for the debug session */
-void Dbg::SetPauseMode(BOOLEAN PauseMode)
+void rvdbg::set_pause_mode(rvdbg::suspension_mode pause_status)
 {
-	Pause = PauseMode;
+	pause = pause_status;
 }
 
 /* Get the pause-specification for the debug session */
-BOOLEAN Dbg::GetPauseMode()
+rvdbg::suspension_mode rvdbg::get_pause_mode()
 {
-	return Pause;
+	return pause;
 }
 
 /* Wait for the module to load and then resolve the import address table */
-static int WaitOptModule(const char* OriginalModuleName, const char* OptModuleName)
+static int wait_opt_module(std::string origin_mod_name, std::string opt_mod_name)
 {
-	if (!UseModule)
+	if (!use_module)
 		return -1;
-	volatile PVOID ModPtr = NULL;
+	volatile void* mod_ptr = nullptr;
 	// Wait for a copy-module to load if there is none
-	while (!ModPtr) 
-		ModPtr = (PVOID)GetModuleHandleA(OptModuleName);
+	while (!mod_ptr)
+		mod_ptr = static_cast<void*>(GetModuleHandleA(opt_mod_name.c_str()));
 	// Resolve the import address table for this copy-module
-	IATResolver::ResolveIAT(OriginalModuleName, OptModuleName);
+	iat_resolution::resolve_iat(origin_mod_name.c_str(), opt_mod_name.c_str());
 	return 0;
 }
 
 /* Set the copy-module to be used in control flow redirection */
-void Dbg::SetModule(BOOLEAN use, const char* OriginalModuleName, const char* ModuleCopyName)
+void rvdbg::set_module(bool use, std::string origin_mod_name, std::string mod_copy_name)
 {
-	UseModule = use;
-
-	if (!use)
+	use_module = use;
+	if (!use_module)
+	{
 		return;
-
-	strcpy_s(CopyModule, MAX_PATH, ModuleCopyName);
-	strcpy_s(MainModule, MAX_PATH, OriginalModuleName);
-	WaitOptModule(OriginalModuleName, ModuleCopyName);
+	}
+	else
+	{
+		copy_module.assign(mod_copy_name, mod_copy_name.size());
+		main_module.assign(origin_mod_name, origin_mod_name.size());
+		
+		wait_opt_module(origin_mod_name, mod_copy_name);
+	}
 }
 
 /* Acquire the name of the CopyModule */
-char* Dbg::GetCopyModuleName()
+std::string rvdbg::get_copy_module_name()
 {
-	return CopyModule;
+	return copy_module;
 }
 
 /* Assign a thread to the thread-excepted pool */
-int Dbg::AssignThread(HANDLE Thread)
+int rvdbg::assign_thread(HANDLE hthread)
 {
-	for (size_t iterator = 0; iterator < sizeof(Threads); iterator++)
+	for (std::size_t iterator = 0; iterator < sizeof(thread_pool); iterator++)
 	{
-		if (Threads[iterator] == NULL)
+		if (thread_pool[iterator] == nullptr)
 		{
-			Threads[iterator] = Thread;
+			thread_pool[iterator] = hthread;
 			return iterator;
 		}
 	}
@@ -278,78 +285,77 @@ int Dbg::AssignThread(HANDLE Thread)
 }
 
 /* Remove a thread from the thread-excepted pool*/
-void Dbg::RemoveThread(HANDLE Thread)
+void rvdbg::remove_thread(HANDLE hthread)
 {
-	for (size_t iterator = 0; iterator < sizeof(Threads); iterator++)
+	for (std::size_t iterator = 0; iterator < sizeof(thread_pool); iterator++)
 	{
-		if (Threads[iterator] == Thread)
+		if (thread_pool[iterator] == hthread)
 		{
-			CloseHandle(Threads[iterator]);
-			Threads[iterator] = NULL;
+			CloseHandle(thread_pool[iterator]);
+			thread_pool[iterator] = nullptr;
 			return;
 		}
 	}
 }
 
 /* Attach the debugger by hooking the user-system supplied exception dispatcher */
-void Dbg::AttachRVDbg()
+void rvdbg::attach_debugger()
 {
-	InitializeConditionVariable(&Runnable);
-	InitializeCriticalSection(&RunLock);
-	SetKiUser();
-	HookFunction(KiUser, (PVOID)KiUserExceptionDispatcher, "ntdll.dll:KiUserExceptionDispatcher");
+	InitializeConditionVariable(&run_condition);
+	InitializeCriticalSection(&run_lock);
+	set_kiuser();
+	hook_function(kiuser, static_cast<void*>(KiUserExceptionDispatcher), "ntdll.dll:KiUserExceptionDispatcher");
 }
 
 /* Detach the debugger by unhooking the user-system supplied exception dispatcher */
-void Dbg::DetachRVDbg()
+void rvdbg::detach_debugger()
 {
-	UnhookFunction(KiUser, (PVOID)KiUserExceptionDispatcher, "ntdll.dll:KiUserExceptionDispatcher");
+	Unhook_function(kiuser, static_cast<void*>(KiUserExceptionDispatcher), "ntdll.dll:KiUserExceptionDispatcher");
 }
 
 /* Continue the suspendeded debugger state */
-void Dbg::ContinueDebugger()
+void rvdbg::continue_debugger()
 {
-	WakeConditionVariable(&Runnable);
+	WakeConditionVariable(&run_condition);
 }
 
 /* Check if the arbitrary exception handler is present within the sector */
-BOOLEAN Dbg::IsAEHPresent()
+bool rvdbg::is_aeh_present()
 {
-	return CurrentSection.IsAEHPresent;
+	return current_section.is_aeh_present;
 }
 
 /* Set the value of a general purpose register */
-void Dbg::SetRegister(DWORD Register, DWORD Value)
+void rvdbg::set_register(std::uint32_t dwregister, std::uint32_t value)
 {
-	// Map the value-representation of a register to the actual register model
-	switch (Register) 
+	switch (dwregister) 
 	{
-	case Dbg::GPRegisters::EAX:
-		r_registers.eax = Value;
+	case static_cast<std::uint32_t>(rvdbg::gp_reg_32::eax):
+		r_registers.eax = value;
 		return;
-	case Dbg::GPRegisters::EBX:
-		r_registers.ebx = Value;
+	case static_cast<std::uint32_t>(rvdbg::gp_reg_32::ebx):
+		r_registers.ebx = value;
 		return;
-	case Dbg::GPRegisters::ECX:
-		r_registers.ecx = Value;
+	case static_cast<std::uint32_t>(rvdbg::gp_reg_32::ecx):
+		r_registers.ecx = value;
 		return;
-	case Dbg::GPRegisters::EDX:
-		r_registers.edx = Value;
+	case static_cast<std::uint32_t>(rvdbg::gp_reg_32::edx):
+		r_registers.edx = value;
 		return;
-	case Dbg::GPRegisters::ESI:
-		r_registers.esi = Value;
+	case static_cast<std::uint32_t>(rvdbg::gp_reg_32::esi):
+		r_registers.esi = value;
 		return;
-	case Dbg::GPRegisters::EDI:
-		r_registers.edi = Value;
+	case static_cast<std::uint32_t>(rvdbg::gp_reg_32::edi):
+		r_registers.edi = value;
 		return;
-	case Dbg::GPRegisters::EBP:
-		r_registers.ebp = Value;
+	case static_cast<std::uint32_t>(rvdbg::gp_reg_32::ebp):
+		r_registers.ebp = value;
 		return;
-	case Dbg::GPRegisters::ESP:
-		r_registers.esp = Value;
+	case static_cast<std::uint32_t>(rvdbg::gp_reg_32::esp):
+		r_registers.esp = value;
 		return;
-	case Dbg::GPRegisters::EIP:
-		r_registers.eip = (PVOID)Value;
+	case static_cast<std::uint32_t>(rvdbg::gp_reg_32::eip):
+		r_registers.eip = (void*)value;
 	}
 }
 
@@ -358,142 +364,142 @@ void Dbg::SetRegister(DWORD Register, DWORD Value)
 * dxmm* = double-precision storage
 * xmm* = single-precision storage
 */
-void Dbg::SetRegisterFP(DWORD Register, BOOLEAN Precision, double Value)
+void rvdbg::set_register_fp(std::uint32_t dwregister, bool precision, double value)
 {
-	r_registers.SSESet = TRUE;
+	r_registers.sse_set = true;
 	// Map a value - representation of an SSE register to the actual register model
-	switch (Register)
+	switch (dwregister)
 	{
-	case Dbg::SSERegisters::xmm0:
-		if (Precision)
+	case static_cast<std::uint32_t>(rvdbg::sse_register::xmm0):
+		if (precision)
 		{
 			r_registers.bxmm0 = 1;
-			r_registers.dxmm0 = Value;
+			r_registers.dxmm0 = value;
 			return;
 		}
 		r_registers.bxmm0 = 2;
-		r_registers.xmm0 = (float)Value;
+		r_registers.xmm0 = static_cast<float>(value);
 		return;
-	case Dbg::SSERegisters::xmm1:
-		if (Precision)
+	case static_cast<std::uint32_t>(rvdbg::sse_register::xmm1):
+		if (precision)
 		{
 			r_registers.bxmm1 = 1;
-			r_registers.dxmm1 = Value;
+			r_registers.dxmm1 = value;
 			return;
 		}
 		r_registers.bxmm1 = 2;
-		r_registers.xmm1 = (float)Value;
+		r_registers.xmm1 = static_cast<float>(value);
 		return;
-	case Dbg::SSERegisters::xmm2:
-		if (Precision)
+	case static_cast<std::uint32_t>(rvdbg::sse_register::xmm2):
+		if (precision)
 		{
 			r_registers.bxmm2 = 1;
-			r_registers.dxmm2 = Value;
+			r_registers.dxmm2 = value;
 			return;
 		}
 		r_registers.bxmm2 = 2;
-		r_registers.xmm2 = (float)Value;
+		r_registers.xmm2 = static_cast<float>(value);
 		return;
-	case Dbg::SSERegisters::xmm3:
-		if (Precision)
+	case static_cast<std::uint32_t>(rvdbg::sse_register::xmm3):
+		if (precision)
 		{
 			r_registers.bxmm3 = 1;
-			r_registers.dxmm3 = Value;
+			r_registers.dxmm3 = value;
 			return;
 		}
 		r_registers.bxmm3 = 2;
-		r_registers.xmm3 = (float)Value;
+		r_registers.xmm3 = static_cast<float>(value);
 		return;
-	case Dbg::SSERegisters::xmm4:
-		if (Precision)
+	case static_cast<std::uint32_t>(rvdbg::sse_register::xmm4):
+		if (precision)
 		{
 			r_registers.bxmm4 = 1;
-			r_registers.dxmm4 = Value;
+			r_registers.dxmm4 = value;
 			return;
 		}
 		r_registers.bxmm4 = 2;
-		r_registers.xmm4 = (float)Value;
+		r_registers.xmm4 = static_cast<float>(value);
 		return;
-	case Dbg::SSERegisters::xmm5:
-		if (Precision)
+	case static_cast<std::uint32_t>(rvdbg::sse_register::xmm5):
+		if (precision)
 		{
 			r_registers.bxmm5 = 1;
-			r_registers.dxmm5 = Value;
+			r_registers.dxmm5 = value;
 			return;
 		}
 		r_registers.bxmm5 = 2;
-		r_registers.xmm5 = (float)Value;
+		r_registers.xmm5 = static_cast<float>(value);
 		return;
-	case Dbg::SSERegisters::xmm6:
-		if (Precision)
+	case static_cast<std::uint32_t>(rvdbg::sse_register::xmm6):
+		if (precision)
 		{
 			r_registers.bxmm6 = 1;
-			r_registers.dxmm6 = Value;
+			r_registers.dxmm6 = value;
 			return;
 		}
 		r_registers.bxmm6 = 2;
-		r_registers.xmm6 = (float)Value;
+		r_registers.xmm6 = static_cast<float>(value);
 		return;
-	case Dbg::SSERegisters::xmm7:
-		if (Precision)
+	case static_cast<std::uint32_t>(rvdbg::sse_register::xmm7):
+		if (precision)
 		{
 			r_registers.bxmm7 = 1;
-			r_registers.dxmm7 = Value;
+			r_registers.dxmm7 = value;
 			return;
 		}
 		r_registers.bxmm7 = 2;
-		r_registers.xmm7 = (float)Value;
+		r_registers.xmm7 = static_cast<float>(value);
 		return;
 	}
 }
 
 /* Set the exception mode for the debug session */
-void Dbg::SetExceptionMode(BOOLEAN _ExceptionMode)
+void rvdbg::set_exception_mode(dispatcher::exception_type exception_status_mode)
 {
-	ExceptionMode = _ExceptionMode;
+	exception_mode = exception_status_mode;
 }
 
 /* Get the exception mode for the debug session */
-BOOLEAN Dbg::GetExceptionMode()
+dispatcher::exception_type rvdbg::get_exception_mode()
 {
-	return ExceptionMode;
+	return exception_mode;
 }
 
 /* Get the exception virtual address of the current section */
-DWORD Dbg::GetExceptionAddress()
+std::uint32_t rvdbg::get_dbg_exception_address()
 {
-	return CurrentSection.ExceptionAddress;
+	return current_section.dbg_exception_address;
 }
 
 /* Return a model-representation of the registers */
-Dbg::VirtualRegisters Dbg::GetRegisters()
+rvdbg::virtual_registers rvdbg::get_registers()
 {
 	return r_registers;
 }
 
 /* Return the current section being used in the debug session */
-Dispatcher::PoolSect Dbg::GetCurrentSection()
+dispatcher::pool_sect rvdbg::get_current_section()
 {
-	return CurrentSection;
+	return current_section;
 }
 
 /* Return the current sector being used to store sections for a debug session */
-Dispatcher::PoolSect* Dbg::GetSector()
+std::array<dispatcher::pool_sect, 128> rvdbg::get_sector()
 {
-	return Sector;
+	return sector;
 }
 
 /* Get the size of the current sector being used to store sections for a debug session */
-int Dbg::GetSectorSize()
+std::size_t rvdbg::get_sector_size()
 {
-	return sizeof(Sector) / sizeof(Dispatcher::PoolSect);
+	return sizeof(sector) / sizeof(dispatcher::pool_sect);
 }
 
 /*
 * Decides whether to use double-precision or single-precision on floating point values
-* Uses bxmm* as a flag for the decision
+* Uses bxmm* as a flag for the dbg_decision
 */
-static void HandleSSE()
+static void handle_sse()
 {
 	if (r_registers.bxmm0 == 1)
 		__asm movsd xmm0, r_registers.dxmm0;
