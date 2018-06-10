@@ -1,15 +1,17 @@
-#ifndef RVDBG
-#define RVDBG
+#ifndef _RVDBG
+#define _RVDBG
 #include <windows.h>
 #include "exceptiondispatcher.h"
 #include "execthread.h"
 #include "..\CHooks\chooks.h"
 #include "..\Injector\injector.h"
 #include "..\IATResolution\iatresolve.h"
+#include <array>
 
 #define PAUSE_ALL 0
 #define PAUSE_SINGLE 1
 #define PAUSE_CONTINUE 2
+#define PAUSE_SINGLE_STEP 3
 
 #define IMMEDIATE_EXCEPTION 0
 #define PAGE_EXCEPTION 1
@@ -18,64 +20,45 @@
 
 #define MOD_OPT 30
 
-static BOOLEAN UseModule;
+static bool use_module;
 
-static DWORD ExceptionComparator; // If the exception is the address compared
-static DWORD ExceptionCode; // The exception status code
-static DWORD AccessException;
+static CONDITION_VARIABLE run_condition;
+static CRITICAL_SECTION run_lock;
 
-static BOOLEAN Pause; // {0 = complete pause ; 1 = only the thread being debugged is pause ; 2 = full continue}
+static std::uint8_t g_Field[128];
 
-static BOOLEAN ExceptionMode;
 
-static PVOID Decision; // The code to jump to, what we would call the catch block
-static PVOID KiUserRealDispatcher; // the code to the real exception dispatcher
-static PVOID KiUser;
-
-static CONDITION_VARIABLE Runnable;
-static CRITICAL_SECTION RunLock;
-
-static HANDLE Threads[16];
-
-static Dispatcher::PoolSect Sector[128];
-static Dispatcher::PoolSect CurrentSection;
-
-static char CopyModule[MAX_PATH];
-static char MainModule[MAX_PATH];
-
-static BYTE g_Field[128];
-
-namespace Dbg
+namespace rvdbg
 {
 
-	struct VirtualRegisters
+	struct virtual_registers
 	{
 		// general purpose registers
-		DWORD eax;
-		DWORD ebx;
-		DWORD ecx;
-		DWORD edx;
-		DWORD esi;
-		DWORD edi;
-		DWORD ebp;
-		DWORD esp;
-		PVOID eip;
-		// SSESet specifies whether xmm registers were modified
-		BOOLEAN SSESet;
-		// bxmm* - b is boolean, bxmm* specifies the type of precision used for the xmm register
-		BOOLEAN bxmm0; 
-		BOOLEAN bxmm1;
-		BOOLEAN bxmm2;
-		BOOLEAN bxmm3;
-		BOOLEAN bxmm4;
-		BOOLEAN bxmm5;
-		BOOLEAN bxmm6;
-		BOOLEAN bxmm7; 
+		std::uint32_t eax;
+		std::uint32_t ebx;
+		std::uint32_t ecx;
+		std::uint32_t edx;
+		std::uint32_t esi;
+		std::uint32_t edi;
+		std::uint32_t ebp;
+		std::uint32_t esp;
+		void* eip;
+		// sse_set specifies whether xmm registers were modified
+		bool sse_set;
+		// bxmm* - b is bool, bxmm* specifies the type of precision used for the xmm register
+		bool bxmm0; 
+		bool bxmm1;
+		bool bxmm2;
+		bool bxmm3;
+		bool bxmm4;
+		bool bxmm5;
+		bool bxmm6;
+		bool bxmm7; 
 		// double precision registers
 		double dxmm0;
 		double dxmm1;
 		double dxmm2;
-		double dxmm3;
+		double dxmm3; 
 		double dxmm4;
 		double dxmm5;
 		double dxmm6;
@@ -89,23 +72,23 @@ namespace Dbg
 		float xmm5;
 		float xmm6;
 		float xmm7;
-		DWORD ReturnAddress;
+		std::uint32_t return_address;
 	};
 
-	enum GPRegisters
+	enum class gp_reg_32 : std::uint32_t
 	{
-		EAX,
-		EBX,
-		ECX,
-		EDX,
-		EDI,
-		ESI,
-		EBP,
-		ESP,
-		EIP
+		eax,
+		ebx,
+		ecx,
+		edx,
+		edi,
+		esi,
+		ebp,
+		esp,
+		eip
 	};
 
-	enum SSERegisters
+	enum class sse_register : std::uint32_t
 	{
 		xmm0,
 		xmm1,
@@ -117,36 +100,44 @@ namespace Dbg
 		xmm7,
 	};
 
-	void SetModule(BOOLEAN use, const char* OriginalModuleName, const char* ModuleCopyName);
-	char* GetCopyModuleName();
+	enum suspension_mode : std::uint32_t
+	{
+		suspend_all,
+		suspend_single,
+		suspend_continue,
+		suspend_single_step
+	};
 
-	extern BOOLEAN Debugger;
+	void set_module(bool use, std::string origin_mod_name, std::string mod_copy_name);
+	std::string get_copy_module_name();
+
+	extern bool debugger;
 	extern CRITICAL_SECTION repr;
 	extern CONDITION_VARIABLE reprcondition;
+	void set_pause_mode(suspension_mode pause_status);
+	suspension_mode get_pause_mode();
 
-	void SetPauseMode(BOOLEAN PauseMode);
-	BOOLEAN GetPauseMode();
+	void attach_debugger();
+	void detach_debugger();
+	void continue_debugger();
 
-	void AttachRVDbg();
-	void DetachRVDbg();
-	void ContinueDebugger();
+	void set_register(std::uint32_t dwregister, std::uint32_t value);
+	void set_register_fp(std::uint32_t dwregister, bool precision, double value);
+	virtual_registers get_registers();
 
-	void SetRegister(DWORD Register, DWORD value);
-	void SetRegisterFP(DWORD Register, BOOLEAN Precision, double Value);
-	Dbg::VirtualRegisters GetRegisters();
+	void set_exception_mode(dispatcher::exception_type exception_status_mode);
+	dispatcher::exception_type get_exception_mode();
 
-	void SetExceptionMode(BOOLEAN lExceptionMode);
-	BOOLEAN GetExceptionMode();
-	DWORD GetExceptionAddress();
-	Dispatcher::PoolSect GetCurrentSection();
+	std::uint32_t get_dbg_exception_address();
 
-	BOOLEAN IsAEHPresent();
+	bool is_aeh_present();
 
-	int AssignThread(HANDLE Thread);
-	void RemoveThread(HANDLE Thread);
+	int assign_thread(HANDLE hthread);
+	void remove_thread(HANDLE hthread);
 
-	Dispatcher::PoolSect* GetSector();
-	int GetSectorSize();
+	std::size_t get_sector_size();
+	std::array<dispatcher::pool_sect, 128> get_sector();
+	dispatcher::pool_sect get_current_section();
 }
 
 #endif
