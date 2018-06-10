@@ -2,26 +2,26 @@
 #define CHOOKS
 #include <vector>
 #include <windows.h>
+#include <cstdint>
+#include "../dbgredefs.h"
 
-struct AddressRecord
+struct address_record
 {
-	void* Address;
-	const char* AddressData;
+	void* address;
+	const char* address_data;
 };
 
-struct HookRecord
+struct hook_record
 {
-	void* FunctionHook;
-	void* HookFunction;
-	const char* FunctionHookData;
-	unsigned char OriginBytes[5];
+	void* function_hook;
+	void* hook_function;
+	const char* function_hook_data;
+	unsigned char origin_bytes[5];
 };
 
-static std::vector<HookRecord> HookRecords;
-
-int HookFunction(void* FunctionOrigin, void* FunctionEnd, const char* FunctionHookData);
-int RehookFunction(void* FunctionOrigin, void* FunctionEnd, const char* FunctionHookData);
-int TempUnhookFunction(void* FunctionOrigin, const char* FunctionHookData);
-int UnhookFunction(void* FunctionOrigin, void* FunctionEnd, const char* FunctionHookData);
+int hook_function(void* function_origin, void* function_end, const char* function_hook_data);
+int rehook_function(void* function_origin, void* function_end, const char* function_hook_data);
+int temp_unhook_function(void* function_origin, const char* function_hook_data);
+int Unhook_function(void* function_origin, void* function_end, const char* function_hook_data);
 
 #endif
