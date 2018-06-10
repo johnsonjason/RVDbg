@@ -6,10 +6,10 @@
 #include "Dispatcher/exceptiondispatcher.h"
 #include "Dispatcher/rvdbg.h"
 
-namespace DbgIO
+namespace dbg_io
 {
-	void SendDbgRegisters(SOCKET Server, BOOLEAN Protocol, DWORD EIP, Dbg::VirtualRegisters Registers);
-	void SendDbgGet(SOCKET Server, BOOLEAN ExceptionType, Dispatcher::PoolSect segment);
+	void send_dbg_registers(SOCKET server, std::uint8_t protocol, std::uint32_t eip, rvdbg::virtual_registers registers);
+	void send_dbg_get(SOCKET server, dispatcher::exception_type dbg_exception_type, dispatcher::pool_sect segment);
 };
 
 #endif
