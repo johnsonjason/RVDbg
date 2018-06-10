@@ -2,19 +2,21 @@
 #ifndef IATRESOLVE
 #define IATRESOLVE
 #include <windows.h>
+#include <cstdint>
+#include "..\dbgredefs.h"
 
-namespace IATResolver
+namespace iat_resolution
 {
-	struct IMP_AT
+	struct imp_at
 	{
-		DWORD Size;
-		PVOID Address;
+		std::uint32_t size;
+		void* address;
 	};
 
-	IMP_AT GetIAT(LPCSTR ModuleName);
+	imp_at get_iat(LPCSTR module_name);
 
-	DWORD CalculateVirtualPageCount(IMP_AT IAT);
+	std::uint32_t calc_virtual_page_count(imp_at iat);
 
-	void ResolveIAT(LPCSTR FirstModule, LPCSTR CopyModule);
+	void resolve_iat(LPCSTR first_module, LPCSTR copy_module);
 }
 #endif
