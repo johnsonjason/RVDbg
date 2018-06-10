@@ -1,58 +1,58 @@
 #include "stdafx.h"
 #include "debugoutput.h"
 
-void DbgIO::SendDbgRegisters(SOCKET Server, BOOLEAN Protocol, DWORD EIP, Dbg::VirtualRegisters Registers)
+void dbg_io::send_dbg_registers(SOCKET server, std::uint8_t protocol, std::uint32_t eip, rvdbg::virtual_registers registers)
 {
 	char snbuffer[356];
-	if (Protocol == 0)
+	if (protocol == 0)
 	{
-		snprintf(snbuffer, sizeof(snbuffer),
-			"+    EAX: %08X\r\n" "    EBX: %08X\r\n"
-			"    ECX: %08X\r\n" "    EDX: %08X\r\n"
-			"    ESI: %08X\r\n" "    EDI: %08X\r\n"
-			"    EBP: %08X\r\n" "    ESP: %08X\r\n"
-			"    EIP: %08X\r\n", Registers.eax, Registers.ebx, Registers.ecx, Registers.edx,
-			Registers.esi, Registers.edi, Registers.ebp, Registers.esp, EIP);
+		std::snprintf(snbuffer, sizeof(snbuffer),
+			"+    eax: %08X\r\n" "    ebx: %08X\r\n"
+			"    ecx: %08X\r\n" "    edx: %08X\r\n"
+			"    esi: %08X\r\n" "    edi: %08X\r\n"
+			"    ebp: %08X\r\n" "    esp: %08X\r\n"
+			"    eip: %08X\r\n", registers.eax, registers.ebx, registers.ecx, registers.edx,
+			registers.esi, registers.edi, registers.ebp, registers.esp, eip);
 	}
-	else if (Protocol == 1)
+	else if (protocol == 1)
 	{
-		snprintf(snbuffer, sizeof(snbuffer),
-			"+    EAX: %08X\r\n" "EBX: %08X\r\n"
-			"ECX: %08X\r\n" "EDX: %08X\r\n"
-			"ESI: %08X\r\n" "EDI: %08X\r\n"
-			"EBP: %08X\r\n" "ESP: %08X\r\n"
-			"EIP: %08X\r\n", Registers.eax, Registers.ebx, Registers.ecx, Registers.edx,
-			Registers.esi, Registers.edi, Registers.ebp, Registers.esp, EIP);
+		std::snprintf(snbuffer, sizeof(snbuffer),
+			"+    eax: %08X\r\n" "ebx: %08X\r\n"
+			"ecx: %08X\r\n" "edx: %08X\r\n"
+			"esi: %08X\r\n" "edi: %08X\r\n"
+			"ebp: %08X\r\n" "esp: %08X\r\n"
+			"eip: %08X\r\n", registers.eax, registers.ebx, registers.ecx, registers.edx,
+			registers.esi, registers.edi, registers.ebp, registers.esp, eip);
 	}
-	else if (Protocol == 2)
+	else if (protocol == 2)
 	{
-		snprintf(snbuffer, sizeof(snbuffer),
+		std::snprintf(snbuffer, sizeof(snbuffer),
 			"+    xmm0: %f\r\n" "    xmm1: %f\r\n"
 			"    xmm2: %f\r\n" "    xmm3: %f\r\n"
 			"    xmm4: %f\r\n" "    xmm5: %f\r\n"
 			"    xmm6: %f\r\n" "    xmm7: %f\r\n",
-			Registers.xmm0, Registers.xmm1, Registers.xmm2, Registers.xmm3,
-			Registers.xmm4, Registers.xmm5, Registers.xmm6, Registers.xmm7);
+			registers.xmm0, registers.xmm1, registers.xmm2, registers.xmm3,
+			registers.xmm4, registers.xmm5, registers.xmm6, registers.xmm7);
 	}
-	else if (Protocol == 3)
+	else if (protocol == 3)
 	{
-		snprintf(snbuffer, sizeof(snbuffer),
+		std::snprintf(snbuffer, sizeof(snbuffer),
 			"+    xmm0: %f\r\n" "    xmm1: %f\r\n"
 			"    xmm2: %f\r\n" "    xmm3: %f\r\n"
 			"    xmm4: %f\r\n" "    xmm5: %f\r\n"
 			"    xmm6: %f\r\n" "    xmm7: %f\r\n",
-			Registers.dxmm0, Registers.dxmm1, Registers.dxmm2, Registers.dxmm3,
-			Registers.dxmm4, Registers.dxmm5, Registers.dxmm6, Registers.dxmm7);
+			registers.dxmm0, registers.dxmm1, registers.dxmm2, registers.dxmm3,
+			registers.dxmm4, registers.dxmm5, registers.dxmm6, registers.dxmm7);
 	}
-	send(Server, snbuffer, sizeof(snbuffer), 0);
+	send(server, snbuffer, sizeof(snbuffer), 0);
 }
 
-void DbgIO::SendDbgGet(SOCKET Server, BOOLEAN ExceptionType, Dispatcher::PoolSect segment)
+void dbg_io::send_dbg_get(SOCKET server, dispatcher::exception_type dbg_exception_type, dispatcher::pool_sect segment)
 {
 	char snbuffer[512];
-	if (ExceptionType != TRUE)
-		snprintf(snbuffer, sizeof(snbuffer), "^    Exception Type: IMM\r\n    Symbol: 0x%08X\r\n    Retn: 0x%08X\r\n    Index:%d\r\n", segment.ExceptionAddress, segment.ReturnAddress, segment.Index);
+	if (dbg_exception_type != dispatcher::exception_type::page_exception)
+		std::snprintf(snbuffer, sizeof(snbuffer), "^    Exception Type: IMM\r\n    Symbol: 0x%08X\r\n    Retn: 0x%08X\r\n    index:%d\r\n", segment.dbg_exception_address, segment.return_address, segment.index);
 	else
-		snprintf(snbuffer, sizeof(snbuffer), "^    Exception Type: PAGE\r\n    Symbol: 0x%08X\r\n    Retn: 0x%08X\r\n    Index:%d\r\n", segment.ExceptionAddress, segment.ReturnAddress, segment.Index);
-	send(Server, snbuffer, sizeof(snbuffer), 0);
+		std::snprintf(snbuffer, sizeof(snbuffer), "^    Exception Type: PAGE\r\n    Symbol: 0x%08X\r\n    Retn: 0x%08X\r\n    index:%d\r\n", segment.dbg_exception_address, segment.return_address, segment.index);
+	send(server, snbuffer, sizeof(snbuffer), 0);
 }
