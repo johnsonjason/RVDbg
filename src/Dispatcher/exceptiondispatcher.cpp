@@ -5,68 +5,68 @@
 
 void dispatcher::raise_instr_av(std::uint8_t* ptr, std::uint8_t save, bool on)
 {
-	std::uint32_t OldProtect;
+	std::uint32_t old_protect;
 	switch (on)
 	{
 	case false:
-		VirtualProtect(ptr, 1, static_cast<unsigned long>(dbg_redef::page_protection::page_xrw), reinterpret_cast<unsigned long*>(&OldProtect));
+		VirtualProtect(ptr, 1, static_cast<unsigned long>(dbg_redef::page_protection::page_xrw), reinterpret_cast<unsigned long*>(&old_protect));
 		*const_cast<std::uint8_t*>(ptr) = save;
-		VirtualProtect(ptr, 1, OldProtect, reinterpret_cast<unsigned long*>(&OldProtect));
+		VirtualProtect(ptr, 1, old_protect, reinterpret_cast<unsigned long*>(&old_protect));
 		return;
 	case true:
-		VirtualProtect(ptr, 1, static_cast<unsigned long>(dbg_redef::page_protection::page_xrw), reinterpret_cast<unsigned long*>(&OldProtect));
+		VirtualProtect(ptr, 1, static_cast<unsigned long>(dbg_redef::page_protection::page_xrw), reinterpret_cast<unsigned long*>(&old_protect));
 		*const_cast<std::uint8_t*>(ptr) = 0xFF;
-		VirtualProtect(ptr, 1, OldProtect, reinterpret_cast<unsigned long*>(&OldProtect));
+		VirtualProtect(ptr, 1, old_protect, reinterpret_cast<unsigned long*>(&old_protect));
 		return;
 	}
 }
 
 void dispatcher::raise_page_av(std::uint8_t* ptr, std::uint32_t save, bool on)
 {
-	std::uint32_t OldProtect;
+	std::uint32_t old_protect;
 	switch (on)
 	{
 	case false:
-		VirtualProtect(ptr, 1, save, reinterpret_cast<unsigned long*>(&OldProtect));
+		VirtualProtect(ptr, 1, save, reinterpret_cast<unsigned long*>(&old_protect));
 		return;
 	case true:
-		VirtualProtect(ptr, 1, static_cast<unsigned long>(dbg_redef::page_protection::page_ro), reinterpret_cast<unsigned long*>(&OldProtect));
+		VirtualProtect(ptr, 1, static_cast<unsigned long>(dbg_redef::page_protection::page_ro), reinterpret_cast<unsigned long*>(&old_protect));
 		return;
 	}
 }
 
 void dispatcher::raise_breakpoint_excpt(std::uint8_t* ptr, std::uint8_t save, bool on)
 {
-	std::uint32_t OldProtect;
+	std::uint32_t old_protect;
 	switch (on)
 	{
 	case false:
-		VirtualProtect(ptr, 1, static_cast<unsigned long>(dbg_redef::page_protection::page_xrw), reinterpret_cast<unsigned long*>(&OldProtect));
+		VirtualProtect(ptr, 1, static_cast<unsigned long>(dbg_redef::page_protection::page_xrw), reinterpret_cast<unsigned long*>(&old_protect));
 		*const_cast<std::uint8_t*>(ptr) = save;
-		VirtualProtect(ptr, 1, OldProtect, reinterpret_cast<unsigned long*>(&OldProtect));
+		VirtualProtect(ptr, 1, old_protect, reinterpret_cast<unsigned long*>(&old_protect));
 		return;
 	case true:
-		VirtualProtect(ptr, 1, static_cast<unsigned long>(dbg_redef::page_protection::page_xrw), reinterpret_cast<unsigned long*>(&OldProtect));
+		VirtualProtect(ptr, 1, static_cast<unsigned long>(dbg_redef::page_protection::page_xrw), reinterpret_cast<unsigned long*>(&old_protect));
 		*const_cast<std::uint8_t*>(ptr) = 0xCC;
-		VirtualProtect(ptr, 1, OldProtect, reinterpret_cast<unsigned long*>(&OldProtect));
+		VirtualProtect(ptr, 1, old_protect, reinterpret_cast<unsigned long*>(&old_protect));
 		return;
 	}
 }
 
 void dispatcher::raise_priv_code_excpt(std::uint8_t* ptr, std::uint8_t save, bool on)
 {
-	std::uint32_t OldProtect;
+	std::uint32_t old_protect;
 	switch (on)
 	{
 	case false:
-		VirtualProtect(ptr, 1, static_cast<unsigned long>(dbg_redef::page_protection::page_xrw), reinterpret_cast<unsigned long*>(&OldProtect));
+		VirtualProtect(ptr, 1, static_cast<unsigned long>(dbg_redef::page_protection::page_xrw), reinterpret_cast<unsigned long*>(&old_protect));
 		*const_cast<std::uint8_t*>(ptr) = save;
-		VirtualProtect(ptr, 1, OldProtect, reinterpret_cast<unsigned long*>(&OldProtect));
+		VirtualProtect(ptr, 1, old_protect, reinterpret_cast<unsigned long*>(&old_protect));
 		return;
 	case true:
-		VirtualProtect(ptr, 1, static_cast<unsigned long>(dbg_redef::page_protection::page_xrw), reinterpret_cast<unsigned long*>(&OldProtect));
+		VirtualProtect(ptr, 1, static_cast<unsigned long>(dbg_redef::page_protection::page_xrw), reinterpret_cast<unsigned long*>(&old_protect));
 		*const_cast<std::uint8_t*>(ptr) = 0xF4;
-		VirtualProtect(ptr, 1, OldProtect, reinterpret_cast<unsigned long*>(&OldProtect));
+		VirtualProtect(ptr, 1, old_protect, reinterpret_cast<unsigned long*>(&old_protect));
 		return;
 	}
 }
