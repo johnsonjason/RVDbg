@@ -1,234 +1,326 @@
-// dllmain.cpp : Defines the entry point for the DLL application.
 // Programmed by jasonfish4
 /* The excessive use of global variables is due to me not wanting to consume stack space, overuse registers, etc...
 within an exception signaling function */
 
 #define _CRT_SECURE_NO_DEPRECATE
+
+#include "stdafx.h"
 #include "Dispatcher\rvdbg.h"
 #include "Dispatcher\exceptiondispatcher.h"
+#include "dbgredefs.h"
 #include "debugoutput.h"
 #include <winsock.h>
+#include <cstdlib>
 #include <string>
-#include <map>
+#include <unordered_map>
+#include <array>
+#include <iostream>
+#include <sstream>
 
 #pragma comment(lib, "wsock32.lib")
+typedef void(*str_comparator_function)();
+void protocol_gui_func();
+void str_breakpoint();
+void str_imode();
+void str_pmode();
+void str_dbg_get();
+void str_dbg_display_regs();
+void str_xmmf_display();
+void str_xmmd_display();
+void str_dbg_run();
 
-BOOLEAN ProtocolGUI;
 
-const char* ModuleName; // Name of the image
-const char* SecModuleName; // Name of the copy image
-const char* Filename; // File location to copy image
+const char* g_module_name; // Name of the image
+const char* g_ext_module_name; // Name of the copy image
+const char* g_file_path; // File location to copy image
+std::uint32_t g_server;
+std::uint8_t g_protocol_interface;
+std::uint32_t symbol;
+sockaddr_in g_server_address;
+std::array<void*, 2> g_threads;
 
-SOCKET Server;
-SOCKADDR_IN ServerAddress;
-HANDLE lThreads[2];
+const std::unordered_map<char, rvdbg::sse_register> xmm_register_map = {
+	{ '0', rvdbg::sse_register::xmm0 },
+	{ '1', rvdbg::sse_register::xmm1 },
+	{ '2', rvdbg::sse_register::xmm2 },
+	{ '3', rvdbg::sse_register::xmm3 },
+	{ '4', rvdbg::sse_register::xmm4 },
+	{ '5', rvdbg::sse_register::xmm5 },
+	{ '6', rvdbg::sse_register::xmm6 },
+	{ '7', rvdbg::sse_register::xmm7 }
+};
 
-std::map<char, DWORD> XMMRegister;
-std::map<char, DWORD> GeneralRegister;
+const std::unordered_map<char, rvdbg::gp_reg_32> general_register_map = {
+	{ '0', rvdbg::gp_reg_32::eax },
+	{ '1', rvdbg::gp_reg_32::ebx },
+	{ '2', rvdbg::gp_reg_32::ecx },
+	{ '3', rvdbg::gp_reg_32::edx },
+	{ '4', rvdbg::gp_reg_32::edi },
+	{ '5', rvdbg::gp_reg_32::esi },
+	{ '6', rvdbg::gp_reg_32::ebp },
+	{ '7', rvdbg::gp_reg_32::esp },
+	{ '8', rvdbg::gp_reg_32::eip }
+};
 
-DWORD WINAPI Repeater(LPVOID lpParam)
+const std::unordered_map<std::string, str_comparator_function> opt_func_table = {
+	{ std::string("**ProtocolGUI"), &protocol_gui_func },
+	{ std::string("!Breakpoint"), &str_breakpoint },
+	{ std::string("imode"), &str_imode },
+	{ std::string("pmode"), &str_pmode },
+	{ std::string("!DbgGet"), &str_dbg_get },
+	{ std::string("!DbgDisplayRegisters"), &str_dbg_display_regs },
+	{ std::string("!xmm-f"), &str_xmmf_display },
+	{ std::string("!xmm-d"), &str_xmmd_display },
+	{ std::string("!DbgRun"), &str_dbg_run },
+};
+
+void register_value(char key, std::uint32_t value)
 {
-	while (TRUE)
+	rvdbg::set_register(static_cast<std::uint32_t>(general_register_map.at(key)), value);
+}
+
+void register_value_fp(char key, bool precision, double value)
+{
+	rvdbg::set_register_fp(static_cast<std::uint32_t>(xmm_register_map.at(key)), precision, value);
+}
+
+void protocol_gui_func()
+{
+	g_protocol_interface = 1;
+}
+
+void str_imode()
+{
+	rvdbg::set_exception_mode(dispatcher::exception_type::immediate_exception);
+}
+
+void str_pmode()
+{
+	rvdbg::set_exception_mode(dispatcher::exception_type::page_exception);
+}
+
+void str_dbg_get()
+{
+	dbg_io::send_dbg_get(g_server, rvdbg::get_exception_mode(), rvdbg::get_current_section());
+}
+
+
+void str_dbg_display_regs()
+{
+	dbg_io::send_dbg_registers(g_server, g_protocol_interface, rvdbg::get_dbg_exception_address(), rvdbg::get_registers());
+}
+
+void str_xmmf_display()
+{
+	dbg_io::send_dbg_registers(g_server, 2, rvdbg::get_dbg_exception_address(), rvdbg::get_registers());
+}
+
+void str_xmmd_display()
+{
+	dbg_io::send_dbg_registers(g_server, 3, rvdbg::get_dbg_exception_address(), rvdbg::get_registers());
+}
+
+void str_dbg_run()
+{
+	if (rvdbg::is_aeh_present())
 	{
-		if (Dbg::tDSend == FALSE)
-		{
-			EnterCriticalSection(&Dbg::repr);
-			SleepConditionVariableCS(&Dbg::reprcondition, &Dbg::repr, INFINITE);
-			LeaveCriticalSection(&Dbg::repr);
-		}
-		if (Dbg::tDSend == TRUE)
-			send(Server, "!DbgModeOn", strlen("!DbgModeOn"), 0);
-		Dbg::tDSend = FALSE;
+		rvdbg::continue_debugger();
 	}
 }
 
-void RegisterValue(char Key, DWORD Value)
+void str_breakpoint()
 {
-	Dbg::SetRegister(GeneralRegister.at(Key), Value);
-}
-
-void RegisterValueFP(char Key, BOOLEAN Precision, double Value)
-{
-	Dbg::SetRegisterFP(XMMRegister.at(Key), Precision, Value);
-}
-
-void CreateMap()
-{
-	GeneralRegister['0'] = Dbg::GPRegisters::EAX;
-	GeneralRegister['1'] = Dbg::GPRegisters::EBX;
-	GeneralRegister['2'] = Dbg::GPRegisters::ECX;
-	GeneralRegister['3'] = Dbg::GPRegisters::EDX;
-	GeneralRegister['4'] = Dbg::GPRegisters::EDI;
-	GeneralRegister['5'] = Dbg::GPRegisters::ESI;
-	GeneralRegister['6'] = Dbg::GPRegisters::EBP;
-	GeneralRegister['7'] = Dbg::GPRegisters::ESP;
-	GeneralRegister['8'] = Dbg::GPRegisters::EIP;
-
-	XMMRegister['0'] = Dbg::SSERegisters::xmm0;
-	XMMRegister['1'] = Dbg::SSERegisters::xmm1;
-	XMMRegister['2'] = Dbg::SSERegisters::xmm2;
-	XMMRegister['3'] = Dbg::SSERegisters::xmm3;
-	XMMRegister['4'] = Dbg::SSERegisters::xmm4;
-	XMMRegister['5'] = Dbg::SSERegisters::xmm5;
-	XMMRegister['6'] = Dbg::SSERegisters::xmm6;
-	XMMRegister['7'] = Dbg::SSERegisters::xmm7;
-}
-
-DWORD WINAPI Dispatch(PVOID lpParam)
-{	
-	WSAData wsaData;
-	WSAStartup(MAKEWORD(2, 2), &wsaData);
-	
-	Server = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	
-	ServerAddress = { 0 };
-	ServerAddress.sin_addr.s_addr = inet_addr("127.0.0.1");
-	ServerAddress.sin_port = htons(8888);
-	ServerAddress.sin_family = AF_INET;
-	
-	connect(Server, (SOCKADDR*)&ServerAddress, sizeof(ServerAddress));
-
-	Dbg::AttachRVDbg();
-	Dbg::SetModule(TRUE, ModuleName, SecModuleName);
-	Dbg::SetPauseMode(PAUSE_ALL);
-
-	CreateMap();
-
-	Dbg::AssignThread(lThreads[0]);
-	Dbg::AssignThread(lThreads[1]);
-
-	char buffer[128];
-	char snbuffer[128];
-	DWORD Symbol = NULL;
-
-	while (TRUE)
+	std::size_t exception_element = dispatcher::check_sector(rvdbg::get_sector());
+	MEMORY_BASIC_INFORMATION mbi;
+	if (VirtualQuery(reinterpret_cast<void*>(symbol), &mbi, sizeof(mbi)) != dbg_redef::nullval)
 	{
-		std::string receiver;
-		
-		memset(buffer, 0, sizeof(buffer));
-		memset(snbuffer, 0, sizeof(snbuffer));
-		recv(Server, buffer, sizeof(buffer), 0);
-		
-		receiver = std::string(buffer);
-		
-		if (receiver.substr(0, std::string("!Symbol @").length()) == std::string("!Symbol @"))
-		{
-			if (!receiver.substr(sizeof("!Symbol @ "), receiver.size()).empty())
-				sscanf(receiver.substr(sizeof("!Symbol @ "), receiver.size()).c_str(), "%X", &Symbol);
-		}
-		else if (receiver.substr(0, std::string("!setreg").length()) == std::string("!setreg"))
-		{
-			DWORD regv = strtol(receiver.substr(std::string("!setreg ? ").length(), receiver.length()).c_str(), NULL, 16);
-			RegisterValue(receiver.at(std::string("!setreg ").length()), regv);
-		}
-		else if (receiver.substr(0, std::string("!fsetreg").length()) == std::string("!fsetreg"))
-		{
-			double regv = strtod(receiver.substr(std::string("!fsetreg ? ").length(), receiver.length()).c_str(), NULL);
-			RegisterValueFP(receiver.at(std::string("!fsetreg ").length()), 0, regv);
-		}
-		else if (receiver.substr(0, std::string("!dsetreg").length()) == std::string("!dsetreg"))
-		{
-			double regv = strtod(receiver.substr(std::string("!dsetreg ? ").length(), receiver.length()).c_str(), NULL);
-			RegisterValueFP(receiver.at(std::string("!dsetreg ").length()), 1, regv);
-		}
-		else if (receiver == std::string("**ProtocolGUI"))
-			ProtocolGUI = TRUE;
-		else if (receiver == std::string("!Breakpoint"))
-		{
-			size_t ExceptionElement = Dispatcher::CheckSector(Dbg::GetSector(), 128);
+		if (mbi.Protect != static_cast<unsigned long>(dbg_redef::page_protection::page_na))
+			dispatcher::add_exception(rvdbg::get_sector(), exception_element, rvdbg::get_exception_mode(), symbol);
+	}
+}
 
-			MEMORY_BASIC_INFORMATION mbi;
-			VirtualQuery((LPVOID)Symbol, &mbi, sizeof(mbi));
+void str_get(std::array<char, 128>& snbuffer, std::size_t index)
+{
+	if (index < rvdbg::get_sector_size())
+	{
+		std::snprintf(snbuffer.data(), snbuffer.size(), "$    symbol: 0x%02X\r\n    index:%d\r\n", symbol, index);
+		send(g_server, snbuffer.data(), snbuffer.size(), 0);
+	}
+	else
+	{
+		send(g_server, "$    symbol not registered", sizeof("$    symbol not registered"), 0);
+	}
+}
 
-			if (mbi.Protect != PAGE_NOACCESS)
-			{
-				switch (Dbg::GetExceptionMode())
-				{
-				case 0:
-					Dispatcher::AddException(Dbg::GetSector(), ExceptionElement, IMMEDIATE_EXCEPTION, Symbol);
-					break;
-				case 1:
-					Dispatcher::AddException(Dbg::GetSector(), ExceptionElement, PAGE_EXCEPTION, Symbol);
-					break;
-				}
-			}
-		}
-		else if (receiver.substr(0, std::string("!Undo ").length()) == std::string("!Undo "))
+void dbg_undo(std::size_t index)
+{
+	if (index < rvdbg::get_sector_size())
+	{
+		std::uint32_t old_protect;
+		switch (rvdbg::get_exception_mode())
 		{
-			int index = strtol(receiver.substr(std::string("!Undo ").length(), receiver.length()).c_str(), NULL, 12);
-			
-			if (index < Dbg::GetSectorSize())
-			{
-				DWORD OldProtect;
-				VirtualProtect((LPVOID)Dbg::GetSector()[index].ExceptionAddress, 1, PAGE_EXECUTE_READWRITE, &OldProtect);
+		case dispatcher::exception_type::immediate_exception:
+			VirtualProtect(reinterpret_cast<void*>(rvdbg::get_sector()[index].dbg_exception_address),
+				1, static_cast<unsigned long>(dbg_redef::page_protection::page_xrw), reinterpret_cast<unsigned long*>(&old_protect));
 
-				*(DWORD*)(Dbg::GetSector()[index].ExceptionAddress) = (Dbg::GetSector()[index].SaveCode);
+			*reinterpret_cast<std::uint32_t*>(rvdbg::get_sector()[index].dbg_exception_address) = (rvdbg::get_sector()[index].save_code);
 
-				VirtualProtect((LPVOID)Dbg::GetSector()[index].ExceptionAddress, 1, OldProtect, &OldProtect);
-				Dispatcher::UnlockSector(Dbg::GetSector(), index);
-			}
-			index = 0;
-		}
+			VirtualProtect(reinterpret_cast<void*>(rvdbg::get_sector()[index].dbg_exception_address), 1, 
+				old_protect, reinterpret_cast<unsigned long*>(&old_protect));
 
-		else if (receiver == std::string("imode"))
-			Dbg::SetExceptionMode(IMMEDIATE_EXCEPTION);
-		else if (receiver == std::string("pmode"))
-			Dbg::SetExceptionMode(PAGE_EXCEPTION);
+			dispatcher::unlock_sector(rvdbg::get_sector(), index);
+			break;
 
-		else if (receiver == std::string("!Get"))
-		{
-			int index = Dispatcher::SearchSector(Dbg::GetSector(), Dbg::GetSectorSize(), Symbol);
-			
-			if (index < Dbg::GetSectorSize())
-			{
-				snprintf(snbuffer, sizeof(snbuffer), "$    Symbol: 0x%02X\r\n    Index:%d\r\n", Symbol, index);
-				send(Server, snbuffer, sizeof(snbuffer), 0);
-			}
-			else
-				send(Server, "$    Symbol not registered", sizeof("$    Symbol not registered"), 0);
-		}
-		else if (receiver == std::string("!DbgGet"))
-			DbgIO::SendDbgGet(Server, Dbg::GetExceptionMode(), Dbg::GetPool());
-		else if (receiver == std::string("!DbgDisplayRegisters"))
-			DbgIO::SendDbgRegisters(Server, ProtocolGUI, Dbg::GetExceptionAddress(), Dbg::GetRegisters());
-		else if (receiver == std::string("!xmm-f"))
-			DbgIO::SendDbgRegisters(Server, 2, Dbg::GetExceptionAddress(), Dbg::GetRegisters());
-		else if (receiver == std::string("!xmm-d"))
-			DbgIO::SendDbgRegisters(Server, 3, Dbg::GetExceptionAddress(), Dbg::GetRegisters());
-		else if (receiver == std::string("!DbgRun"))
-		{
-			if (Dbg::IsAEHPresent())
-				Dbg::ContinueDebugger();
-		}
-		else if (receiver == std::string("!Exit"))
-		{
-			if (Dbg::IsAEHPresent())
-				Dbg::ContinueDebugger();
+		case dispatcher::exception_type::access_exception:
+			/* UNIMPLEMENTED */
+		case dispatcher::exception_type::page_exception:
+			VirtualProtect(reinterpret_cast<void*>(rvdbg::get_sector()[index].dbg_exception_address), 1, 
+				rvdbg::get_sector()[index].save_code, reinterpret_cast<unsigned long*>(&old_protect));
+
+			dispatcher::unlock_sector(rvdbg::get_sector(), index);
 			break;
 		}
 	}
+}
 
-	Dbg::DetachRVDbg();
-	closesocket(Server);
+unsigned long __stdcall dbg_synchronization(void* lpParam)
+{
+	while (true)
+	{
+		if (rvdbg::debugger == false)
+		{
+			EnterCriticalSection(&rvdbg::repr);
+			SleepConditionVariableCS(&rvdbg::reprcondition, &rvdbg::repr, dbg_redef::infinite);
+			LeaveCriticalSection(&rvdbg::repr);
+		}
+		if (rvdbg::debugger == true)
+		{
+			send(g_server, "!DbgModeOn", strlen("!DbgModeOn"), 0);
+			rvdbg::debugger = false;
+		}
+	}
+}
+
+unsigned long __stdcall dispatch_initializer(void* lpParam)
+{	
+	WSAData wsa_data;
+	WSAStartup(MAKEWORD(2, 2), &wsa_data);
+
+	g_server = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	g_server_address = { 0 };
+	g_server_address.sin_addr.s_addr = inet_addr("127.0.0.1");
+	g_server_address.sin_port = htons(8888);
+	g_server_address.sin_family = AF_INET;
+	connect(g_server, reinterpret_cast<sockaddr*>(&g_server_address), sizeof(g_server_address));
+
+	rvdbg::attach_debugger();
+	rvdbg::set_module(false, g_module_name, g_ext_module_name);
+	rvdbg::set_pause_mode(rvdbg::suspension_mode::suspend_all);
+	rvdbg::assign_thread(g_threads[0]);
+	rvdbg::assign_thread(g_threads[1]);
+
+	std::array<char, 128> buffer;
+	std::array<char, 128> snbuffer;
+	std::istringstream dbg_conversion_stream;
+
+	while (true)
+	{
+		buffer.fill('\0');
+		snbuffer.fill('\0');
+		recv(g_server, buffer.data(), buffer.size(), 0);
+
+		std::string receiver;
+		receiver = std::string(buffer.data());
+		
+		try
+		{
+			str_comparator_function local_func = opt_func_table.at(receiver);
+			local_func();
+		}
+		catch (std::out_of_range& e)
+		{
+			std::cerr << "end of map reached, string being compared is used for parsing\n";
+
+			if (receiver.substr(0, std::string("!Symbol @").size()) == std::string("!Symbol @"))
+			{
+				if (!receiver.substr(sizeof("!Symbol @ "), receiver.size()).empty())
+				{
+					std::sscanf(receiver.substr(sizeof("!Symbol @ "), receiver.size()).c_str(), "%X", &symbol);
+				}
+			}
+
+			else if (receiver.substr(0, std::string("!setreg").size()) == std::string("!setreg"))
+			{
+				std::uint32_t regv;
+				dbg_conversion_stream.str(receiver.substr(std::string("!setreg ? ").size(), receiver.size()));
+				dbg_conversion_stream >> std::hex >> regv;
+				register_value(receiver.at(std::string("!setreg ").size()), regv);
+			}
+
+			else if (receiver.substr(0, std::string("!fsetreg").size()) == std::string("!fsetreg"))
+			{
+				double regv;
+				dbg_conversion_stream.str(receiver.substr(std::string("!fsetreg ? ").size(), receiver.size()));
+				dbg_conversion_stream >> regv;
+				register_value_fp(receiver.at(std::string("!fsetreg ").size()), 0, regv);
+			}
+
+			else if (receiver.substr(0, std::string("!dsetreg").size()) == std::string("!dsetreg"))
+			{
+				double regv;
+				dbg_conversion_stream.str((receiver.substr(std::string("!dsetreg ? ").size(), receiver.size())));
+				dbg_conversion_stream >> regv;
+				register_value_fp(receiver.at(std::string("!dsetreg ").size()), 1, regv);
+			}
+
+			else if (receiver.substr(0, std::string("!Undo ").size()) == std::string("!Undo "))
+			{
+				std::size_t index;
+				dbg_conversion_stream.str(receiver.substr(std::string("!Undo ").size(), receiver.size()));
+				dbg_conversion_stream >> index;
+				dbg_undo(index);
+			}
+
+			else if (receiver == std::string("!Get"))
+			{
+				std::size_t index = dispatcher::search_sector(rvdbg::get_sector(), symbol);
+				str_get(snbuffer, index);
+			}
+
+			else if (receiver == std::string("!Exit"))
+			{
+				str_dbg_run();
+				break;
+			}
+		}
+	}
+
+	rvdbg::detach_debugger();
+	rvdbg::remove_thread(g_threads[0]);
+	rvdbg::remove_thread(g_threads[1]);
+	closesocket(g_server);
 	WSACleanup();
-	TerminateThread(lThreads[0], 0);
-	Dbg::RemoveThread(lThreads[0]);
-	Dbg::RemoveThread(lThreads[1]);
+	TerminateThread(g_threads[0], 0);
 	return 0;
 }
 
-BOOL APIENTRY DllMain(HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved)
+BOOL APIENTRY DllMain(HMODULE hModule, std::uint32_t  ul_reason_for_call, void* lpReserved)
 {
 	switch (ul_reason_for_call)
 	{
 	case DLL_PROCESS_ATTACH:
-		UseModule = FALSE;
-		if (UseModule)
-			DLLInject(GetCurrentProcessId(), Filename);
-		InitializeCriticalSection(&Dbg::repr);
-		InitializeConditionVariable(&Dbg::reprcondition);
-		lThreads[0] = CreateThread(0, 0, Repeater, 0, 0, 0);
-		lThreads[1] = CreateThread(0, 0, Dispatch, 0, 0, 0);
+		use_module = false;
+		if (use_module)
+			dll_inject(GetCurrentProcessId(), g_file_path);
+
+		AllocConsole();
+		freopen("CONIN$", "r", stdin);
+		freopen("CONOUT$", "w", stdout);
+		freopen("CONOUT$", "w", stderr);
+		InitializeCriticalSection(&rvdbg::repr);
+		InitializeConditionVariable(&rvdbg::reprcondition);
+		g_threads[0] = CreateThread(0, 0, dbg_synchronization, 0, 0, 0);
+		g_threads[1] = CreateThread(0, 0, dispatch_initializer, 0, 0, 0);
 	case DLL_THREAD_ATTACH:
 	case DLL_THREAD_DETACH:
 	case DLL_PROCESS_DETACH:
@@ -236,4 +328,5 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpReser
 	}
 	return TRUE;
 }
+
 
