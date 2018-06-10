@@ -3,51 +3,59 @@
 #define EXCEPTIONDISPATCHER
 #include <windows.h>
 #include <tlhelp32.h>
-#include <stdlib.h>
-
-
-namespace Dispatcher
+#include <cstdlib>
+#include <cstdint>
+#include <array>
+#include "..\dbgredefs.h"
+namespace dispatcher
 {
 	/* specifies information about the exception in this section */
-	struct PoolSect
+
+	enum class exception_type : std::uint32_t
 	{
-		// copy-module name
-		char ModuleName[MAX_PATH];
-		// current thread of exception
-		HANDLE Thread;
-		// current thread id of exception
-		DWORD ThreadId;
-		// if the section is being used
-		BOOLEAN Used;
-		// if a copy-module is being used
-		BOOLEAN UseModule;
-		// is the arbitrary exception handler present for this section
-		BOOLEAN IsAEHPresent;
-		// the type of exception
-		BOOLEAN ExceptionType;
-		// the exception code information
-		DWORD ExceptionCode;
-		// the address the exception occurred at
-		DWORD ExceptionAddress;
-		// the offset of the exception address
-		DWORD ExceptionOffset;
-		// Additional information
-		DWORD ReturnAddress;
-		DWORD SaveCode;
-		DWORD Index;
+		immediate_exception,
+		access_exception,
+		page_exception,
+		memory_exception_continue
 	};
 
+	struct pool_sect
+	{
+		// copy-module name
+		std::string module_name;
+		// current thread of exception
+		HANDLE thread;
+		// current thread id of exception
+		std::uint32_t thread_id;
+		// if the section is being used
+		bool used;
+		// if a copy-module is being used
+		bool use_module;
+		// is the arbitrary exception handler present for this section
+		bool is_aeh_present;
+		// the type of exception
+		exception_type dbg_exception_type;
+		// the exception code information
+		std::uint32_t dbg_exception_code;
+		// the address the exception occurred at
+		std::uint32_t dbg_exception_address;
+		// the offset of the exception address
+		std::uint32_t dbg_exception_offset;
+		// Additional information
+		std::uint32_t return_address;
+		std::uint32_t save_code;
+		std::uint32_t index;
+	};
 
-	void RaiseILGLAccessViolation(BYTE* ptr, BYTE save, BOOLEAN on);
-	void RaisePageAccessViolation(BYTE* ptr, DWORD save, BOOLEAN on);
-	void RaiseBreakpointException(BYTE* ptr, BYTE save, BOOLEAN on);
-	void RaisePrivilegedCodeException(BYTE* ptr, BYTE save, BOOLEAN on);
-
-	PVOID HandleException(Dispatcher::PoolSect segment, const char* ModuleName, BOOLEAN Constant);
-	size_t CheckSector(PoolSect sector[], size_t size);
-	size_t SearchSector(PoolSect sector[], size_t size, DWORD address);
-	void UnlockSector(PoolSect sector[], size_t index);
-	void LockSector(PoolSect sector[], size_t index);
-	void AddException(PoolSect sector[], size_t index, BOOLEAN Type, DWORD ExceptionAddress);
+	void raise_instr_av(std::uint8_t* ptr, std::uint8_t save, bool on);
+	void raise_page_av(std::uint8_t* ptr, std::uint32_t save, bool on);
+	void raise_breakpoint_excpt(std::uint8_t* ptr, std::uint8_t save, bool on);
+	void raise_priv_code_excpt(std::uint8_t* ptr, std::uint8_t save, bool on);
+	void* handle_exception(pool_sect segment, std::string module_name, bool constant);
+	std::size_t check_sector(std::array<dispatcher::pool_sect, 128>& sector);
+	std::size_t search_sector(std::array<dispatcher::pool_sect, 128>& sector, std::uint32_t address);
+	void unlock_sector(std::array<dispatcher::pool_sect, 128>& sector, std::size_t index);
+	void lock_sector(std::array<dispatcher::pool_sect, 128>& sector, std::size_t index);
+	void add_exception(std::array<dispatcher::pool_sect, 128>& sector, std::size_t index, exception_type type, std::uint32_t dbg_exception_address);
 }
 #endif
