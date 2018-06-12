@@ -1,3 +1,4 @@
+// dllmain.cpp : Defines the entry point for the DLL application.
 // Programmed by jasonfish4
 /* The excessive use of global variables is due to me not wanting to consume stack space, overuse registers, etc...
 within an exception signaling function */
@@ -28,7 +29,6 @@ void str_dbg_display_regs();
 void str_xmmf_display();
 void str_xmmd_display();
 void str_dbg_run();
-
 
 const char* g_module_name; // Name of the image
 const char* g_ext_module_name; // Name of the copy image
@@ -135,7 +135,9 @@ void str_breakpoint()
 	if (VirtualQuery(reinterpret_cast<void*>(symbol), &mbi, sizeof(mbi)) != dbg_redef::nullval)
 	{
 		if (mbi.Protect != static_cast<unsigned long>(dbg_redef::page_protection::page_na))
+		{
 			dispatcher::add_exception(rvdbg::get_sector(), exception_element, rvdbg::get_exception_mode(), symbol);
+		}
 	}
 }
 
@@ -309,12 +311,13 @@ BOOL APIENTRY DllMain(HMODULE hModule, std::uint32_t  ul_reason_for_call, void* 
 	switch (ul_reason_for_call)
 	{
 	case DLL_PROCESS_ATTACH:
-		use_module = false;
-		if (use_module)
+
+		if (use_module) // currently off by default
+		{
 			dll_inject(GetCurrentProcessId(), g_file_path);
+		}
 
 		AllocConsole();
-		freopen("CONIN$", "r", stdin);
 		freopen("CONOUT$", "w", stdout);
 		freopen("CONOUT$", "w", stderr);
 		InitializeCriticalSection(&rvdbg::repr);
@@ -328,5 +331,3 @@ BOOL APIENTRY DllMain(HMODULE hModule, std::uint32_t  ul_reason_for_call, void* 
 	}
 	return TRUE;
 }
-
-
