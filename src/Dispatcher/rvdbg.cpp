@@ -28,7 +28,9 @@ static void self_resume_threads()
 	for (std::size_t iterator = 0; iterator < sizeof(thread_pool); iterator++)
 	{
 		if (thread_pool[iterator] != nullptr)
+		{
 			ResumeThread(thread_pool[iterator]);
+		}
 	}
 }
 
@@ -37,7 +39,9 @@ static void* call_chain_vpa()
 {
 	std::size_t exception_element = dispatcher::search_sector(sector, exception_comparator);
 	if (exception_element > sector.size())
+	{
 		return nullptr;
+	}
 	return nullptr;
 }
 
@@ -187,7 +191,9 @@ static __declspec(naked) void __stdcall KiUserExceptionDispatcher(PEXCEPTION_REC
 	}
 
 	if (r_registers.sse_set == true)
+	{
 		handle_sse();
+	}
 	r_registers.sse_set = false;
 
 	__asm
@@ -237,11 +243,15 @@ rvdbg::suspension_mode rvdbg::get_pause_mode()
 static int wait_opt_module(std::string origin_mod_name, std::string opt_mod_name)
 {
 	if (!use_module)
+	{
 		return -1;
+	}
 	volatile void* mod_ptr = nullptr;
 	// Wait for a copy-module to load if there is none
 	while (!mod_ptr)
+	{
 		mod_ptr = static_cast<void*>(GetModuleHandleA(opt_mod_name.c_str()));
+	}
 	// Resolve the import address table for this copy-module
 	iat_resolution::resolve_iat(origin_mod_name.c_str(), opt_mod_name.c_str());
 	return 0;
@@ -259,7 +269,6 @@ void rvdbg::set_module(bool use, std::string origin_mod_name, std::string mod_co
 	{
 		copy_module.assign(mod_copy_name, mod_copy_name.size());
 		main_module.assign(origin_mod_name, origin_mod_name.size());
-		
 		wait_opt_module(origin_mod_name, mod_copy_name);
 	}
 }
@@ -502,44 +511,76 @@ std::size_t rvdbg::get_sector_size()
 static void handle_sse()
 {
 	if (r_registers.bxmm0 == 1)
+	{
 		__asm movsd xmm0, r_registers.dxmm0;
+	}
 	else if (r_registers.bxmm0 == 2)
+	{
 		__asm movss xmm0, r_registers.xmm0;
+	}
 
 	if (r_registers.bxmm1 == 1)
+	{
 		__asm movsd xmm1, r_registers.dxmm1;
+	}
 	else if (r_registers.bxmm1 == 2)
+	{
 		__asm movss xmm1, r_registers.xmm1;
+	}
 
 	if (r_registers.bxmm2 == 1)
+	{
 		__asm movsd xmm2, r_registers.dxmm2;
+	}
 	else if (r_registers.bxmm2 == 2)
+	{
 		__asm movss xmm2, r_registers.xmm2;
+	}
 
 	if (r_registers.bxmm3 == 1)
+	{
 		__asm movsd xmm3, r_registers.dxmm3;
+	}
 	else if (r_registers.bxmm3 == 2)
+	{
 		__asm movss xmm3, r_registers.xmm3;
+	}
 
 	if (r_registers.bxmm4 == 1)
+	{
 		__asm movsd xmm4, r_registers.dxmm4;
+	}
 	else if (r_registers.bxmm4 == 2)
+	{
 		__asm movss xmm4, r_registers.xmm4;
+	}
 
 	if (r_registers.bxmm5 == 1)
+	{
 		__asm movsd xmm5, r_registers.dxmm5;
+	}
 	else if (r_registers.bxmm5 == 2)
+	{
 		__asm movss xmm5, r_registers.xmm5;
+	}
 
 	if (r_registers.bxmm6 == 1)
+	{
 		__asm movsd xmm6, r_registers.dxmm6;
+	}
 	else if (r_registers.bxmm6 == 2)
+	{
 		__asm movss xmm6, r_registers.xmm6;
+	}
 
 	if (r_registers.bxmm7 == 1)
+	{
 		__asm movsd xmm7, r_registers.dxmm7;
+	}
 	else if (r_registers.bxmm7 == 2)
+	{
 		__asm movss xmm7, r_registers.xmm7;
+	}
 
 	r_registers.bxmm0 = 0;
 	r_registers.bxmm1 = 0;
