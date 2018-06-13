@@ -23,8 +23,7 @@ Access Exceptions - This type of exception is a new idea in implementation, it w
     rvdbg::set_pause_mode(rvdbg::suspension_mode::suspend_all);
     rvdbg::set_exception_mode(dispatcher::exception_type::immediate_exception);
     
-    dispatcher::add_exception(rvdbg::get_sector(), rvdbg::get_sector_size(), 
-    rvdbg::get_exception_mode(), reinterpret_cast<unsigned long>(Process) + CHECK_OFFSET);
+    dispatcher::add_exception(rvdbg::get_sector(), rvdbg::get_sector_size(), rvdbg::get_exception_mode(), reinterpret_cast<unsigned long>(process) + CHECK_OFFSET);
     
     WaitOnDebug();
     
