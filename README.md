@@ -17,22 +17,19 @@ Access Exceptions - This type of exception is a new idea in implementation, it w
 ## API Usage
 
 ```Cpp
+    rvdbg::attach_debugger();
+    rvdbg::assign_thread(GetCurrentThread());
 
-    Dbg::AttachRVDbg();
-    Dbg::AssignThread(GetCurrentThread());
-
-    Dbg::SetPauseMode(PAUSE_CONTINUE);
-    Dbg::SetExceptionMode(IMMEDIATE_EXCEPTION);
-
-
-    while (ProcessActive)
-    {
-        Dispatcher::AddException(Dbg::GetSector(), Dbg::GetSectorSize(), IMMEDIATE_EXCEPTION, (DWORD)Process + CHECK_OFFSET);
-        WaitOnDebug();
-        Dbg::SetRegister(Dbg::EBP, (DWORD)CheckCopy);
-        Dbg::ContinueDebugger()
-    }
+    rvdbg::set_pause_mode(rvdbg::suspension_mode::suspend_all);
+    rvdbg::set_exception_mode(dispatcher::exception_type::immediate_exception);
     
+    dispatcher::add_exception(rvdbg::get_sector(), rvdbg::get_sector_size(), 
+    rvdbg::get_exception_mode(), reinterpret_cast<unsigned long>(Process) + CHECK_OFFSET);
+    
+    WaitOnDebug();
+    
+    rvdbg::set_register(static_cast<std::uint32_t>(rvdbg::gp_reg_32::ebp), check_copy);
+    rvdbg::ContinueDebugger() 
 ```
     
 
