@@ -25,10 +25,10 @@ Access Exceptions - This type of exception is a new idea in implementation, it w
     
     dispatcher::add_exception(rvdbg::get_sector(), rvdbg::get_sector_size(), rvdbg::get_exception_mode(), reinterpret_cast<unsigned long>(process) + CHECK_OFFSET);
     
-    WaitOnDebug();
+    wait_on_debug();
     
     rvdbg::set_register(static_cast<std::uint32_t>(rvdbg::gp_reg_32::ebp), check_copy);
-    rvdbg::ContinueDebugger() 
+    rvdbg::continue_debugger() 
 ```
     
 
