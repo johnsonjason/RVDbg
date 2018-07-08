@@ -195,7 +195,7 @@ unsigned long __stdcall dbg_synchronization(void* lpParam)
 			SleepConditionVariableCS(&rvdbg::reprcondition, &rvdbg::repr, dbg_redef::infinite);
 			LeaveCriticalSection(&rvdbg::repr);
 		}
-		if (rvdbg::debugger == true)
+		else if (rvdbg::debugger == true)
 		{
 			send(g_server, "!DbgModeOn", strlen("!DbgModeOn"), 0);
 			rvdbg::debugger = false;
