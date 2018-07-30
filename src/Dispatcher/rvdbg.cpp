@@ -4,8 +4,8 @@
 bool rvdbg::debugger;
 CRITICAL_SECTION rvdbg::repr;
 CONDITION_VARIABLE rvdbg::reprcondition;
-static rvdbg::virtual_registers r_registers;
-static HANDLE thread_pool[16];
+static CONDITION_VARIABLE run_condition;
+static CRITICAL_SECTION run_lock;
 static void* dbg_decision; // The code to jump to, what we would call the catch block
 static void* kiuser_realdispatcher; // the code to the real exception dispatcher
 static void* kiuser;
@@ -13,19 +13,21 @@ static std::uint32_t exception_comparator; // If the exception is the address co
 static std::uint32_t dbg_exception_code; // The exception status code
 static std::uint32_t access_exception;
 static std::array<dispatcher::pool_sect, 128> sector;
+static std::array<dbg_redef::handle, 16> thread_pool;
 static dispatcher::pool_sect current_section;
 static rvdbg::suspension_mode pause; // {0 = complete pause ; 1 = only the thread being debugged is pause ; 2 = full continue}
 static std::string copy_module;
 static std::string main_module;
-
+static rvdbg::virtual_registers r_registers;
 static dispatcher::exception_type exception_mode;
 
 static void handle_sse();
 
 /* Resume exception-type thread_pool */
+#include <iostream>
 static void self_resume_threads()
 {
-	for (std::size_t iterator = 0; iterator < sizeof(thread_pool); iterator++)
+	for (std::size_t iterator = 0; iterator < thread_pool.size(); iterator++)
 	{
 		if (thread_pool[iterator] != nullptr)
 		{
@@ -61,26 +63,29 @@ static void* call_chain()
 		return nullptr; 
 	}
 
-	if (rvdbg::get_pause_mode() == rvdbg::suspension_mode::suspend_all || 
-		static_cast<std::uint32_t>(rvdbg::get_pause_mode()) == static_cast<uint32_t>(rvdbg::suspension_mode::suspend_all) ^ MOD_OPT)
+	if (rvdbg::get_pause_mode() == rvdbg::suspension_mode::suspend_all || rvdbg::get_pause_mode() == rvdbg::suspension_mode::mod_suspend_all)
 	{
+		std::cout << "InDbg: {Thread} Suspending threads" << std::endl;
 		suspend_threads(GetCurrentProcessId(), GetCurrentThreadId()); 
 		rvdbg::debugger = true;
+		std::cout << "InDbg: {Thread} Waking UI lock and self threads" << std::endl;
 		WakeConditionVariable(&rvdbg::reprcondition); 
 		self_resume_threads(); 
 	}
 
 	sector[exception_element].dbg_exception_code = dbg_exception_code; 
 
-	if (static_cast<std::uint32_t>(rvdbg::get_pause_mode()) == static_cast<std::uint32_t>(rvdbg::suspension_mode::suspend_all) ^ MOD_OPT || 
-		static_cast<std::uint32_t>(rvdbg::get_pause_mode()) == static_cast<std::uint32_t>(rvdbg::suspension_mode::suspend_single) ^ MOD_OPT || 
-		static_cast<std::uint32_t>(rvdbg::get_pause_mode()) == static_cast<std::uint32_t>(rvdbg::suspension_mode::suspend_continue) ^ MOD_OPT)
+	if (rvdbg::get_pause_mode() == rvdbg::suspension_mode::mod_suspend_all || 
+		rvdbg::get_pause_mode() == rvdbg::suspension_mode::mod_suspend_single || 
+		rvdbg::get_pause_mode() == rvdbg::suspension_mode::mod_suspend_continue)
 	{
 		r_registers.eip = dispatcher::handle_exception(sector[exception_element], sector[exception_element].module_name, true); 
+		std::cout << "InDbg: {DbgEHandlerReturn} acquired instruction pointer: " << r_registers.eip << std::endl;
 	}
 	else
 	{
 		r_registers.eip = dispatcher::handle_exception(sector[exception_element], sector[exception_element].module_name, false); 
+		std::cout << "InDbg: {DbgEHandlerReturn} acquired instruction pointer: " << r_registers.eip << std::endl;
 	}
 	
 	sector[exception_element].thread_id = GetCurrentThreadId();
@@ -92,28 +97,35 @@ static void* call_chain()
 
 	if (rvdbg::get_pause_mode() == rvdbg::suspension_mode::suspend_all || 
 		rvdbg::get_pause_mode() == rvdbg::suspension_mode::suspend_single || 
-		static_cast<std::uint32_t>(rvdbg::get_pause_mode()) ==  static_cast<std::uint32_t>(rvdbg::suspension_mode::suspend_all) ^ MOD_OPT || 
-		static_cast<std::uint32_t>(rvdbg::get_pause_mode()) == static_cast<std::uint32_t>(rvdbg::suspension_mode::suspend_single) ^ MOD_OPT)
+		rvdbg::get_pause_mode() == rvdbg::suspension_mode::mod_suspend_all || 
+		rvdbg::get_pause_mode() == rvdbg::suspension_mode::mod_suspend_single)
 	{
+		std::cout << "InDbg: {Synchronization} Entering debugger lock" << std::endl;
+
 		EnterCriticalSection(&run_lock);
 		SleepConditionVariableCS(&run_condition, &run_lock, dbg_redef::infinite); 
 		LeaveCriticalSection(&run_lock);
+		std::cout << "InDbg: {Synchronization} Exited debugger lock" << std::endl;
 		if (rvdbg::get_pause_mode() != rvdbg::suspension_mode::suspend_single && 
 			rvdbg::get_pause_mode() != rvdbg::suspension_mode::suspend_continue)
 		{
+			std::cout << "InDbg: {Synchronization} Resuming threads" << std::endl;
 			resume_threads(GetCurrentProcessId(), GetCurrentThreadId());
 		}
+
 	}
 
+	std::cout << "InDbg: {InternalDbgEnvironment} Unlocking dbg sector: " << exception_element << std::endl;
 	dispatcher::unlock_sector(sector, exception_element);
 
 	if (rvdbg::get_pause_mode() == rvdbg::suspension_mode::suspend_continue)
 	{
-		std::size_t step_element = dispatcher::check_sector(rvdbg::get_sector());
+		std::size_t step_element = dispatcher::check_sector(rvdbg::get_sector(), dbg_redef::nullval);
 		dispatcher::add_exception(rvdbg::get_sector(), step_element, exception_mode, sector[exception_element].dbg_exception_address);
 	}
 
 	rvdbg::debugger = false;
+	std::cout << "InDbg: {InternalDbgEnvironment} returning to: " << r_registers.eip << std::endl;
 	return r_registers.eip;
 }
 
@@ -121,6 +133,13 @@ static __declspec(naked) void __stdcall KiUserExceptionDispatcher(PEXCEPTION_REC
 {
 	__asm
 	{
+		cmp[esp + 8], 0xC0000096
+		je noncpp;
+		mov eax, r_registers.eax;
+		mov ecx, [esp + 04];
+		mov ebx, [esp];
+		jmp kiuser_realdispatcher;
+		noncpp:
 		movss r_registers.xmm0, xmm0;
 		movss r_registers.xmm1, xmm1;
 		movss r_registers.xmm2, xmm2;
@@ -313,13 +332,13 @@ void rvdbg::attach_debugger()
 	InitializeConditionVariable(&run_condition);
 	InitializeCriticalSection(&run_lock);
 	set_kiuser();
-	hook_function(kiuser, static_cast<void*>(KiUserExceptionDispatcher), "ntdll.dll:KiUserExceptionDispatcher");
+	hook_function(kiuser, static_cast<void*>(KiUserExceptionDispatcher), std::string("ntdll.dll:KiUserExceptionDispatcher"));
 }
 
 /* Detach the debugger by unhooking the user-system supplied exception dispatcher */
 void rvdbg::detach_debugger()
 {
-	Unhook_function(kiuser, static_cast<void*>(KiUserExceptionDispatcher), "ntdll.dll:KiUserExceptionDispatcher");
+	unhook_function(std::string("ntdll.dll:KiUserExceptionDispatcher"));
 }
 
 /* Continue the suspendeded debugger state */
@@ -335,35 +354,35 @@ bool rvdbg::is_aeh_present()
 }
 
 /* Set the value of a general purpose register */
-void rvdbg::set_register(std::uint32_t dwregister, std::uint32_t value)
+void rvdbg::set_register(std::uint8_t dwregister, std::uint32_t value)
 {
 	switch (dwregister) 
 	{
-	case static_cast<std::uint32_t>(rvdbg::gp_reg_32::eax):
+	case static_cast<std::uint8_t>(rvdbg::gp_reg_32::eax):
 		r_registers.eax = value;
 		return;
-	case static_cast<std::uint32_t>(rvdbg::gp_reg_32::ebx):
+	case static_cast<std::uint8_t>(rvdbg::gp_reg_32::ebx):
 		r_registers.ebx = value;
 		return;
-	case static_cast<std::uint32_t>(rvdbg::gp_reg_32::ecx):
+	case static_cast<std::uint8_t>(rvdbg::gp_reg_32::ecx):
 		r_registers.ecx = value;
 		return;
-	case static_cast<std::uint32_t>(rvdbg::gp_reg_32::edx):
+	case static_cast<std::uint8_t>(rvdbg::gp_reg_32::edx):
 		r_registers.edx = value;
 		return;
-	case static_cast<std::uint32_t>(rvdbg::gp_reg_32::esi):
+	case static_cast<std::uint8_t>(rvdbg::gp_reg_32::esi):
 		r_registers.esi = value;
 		return;
-	case static_cast<std::uint32_t>(rvdbg::gp_reg_32::edi):
+	case static_cast<std::uint8_t>(rvdbg::gp_reg_32::edi):
 		r_registers.edi = value;
 		return;
-	case static_cast<std::uint32_t>(rvdbg::gp_reg_32::ebp):
+	case static_cast<std::uint8_t>(rvdbg::gp_reg_32::ebp):
 		r_registers.ebp = value;
 		return;
-	case static_cast<std::uint32_t>(rvdbg::gp_reg_32::esp):
+	case static_cast<std::uint8_t>(rvdbg::gp_reg_32::esp):
 		r_registers.esp = value;
 		return;
-	case static_cast<std::uint32_t>(rvdbg::gp_reg_32::eip):
+	case static_cast<std::uint8_t>(rvdbg::gp_reg_32::eip):
 		r_registers.eip = (void*)value;
 	}
 }
@@ -373,13 +392,13 @@ void rvdbg::set_register(std::uint32_t dwregister, std::uint32_t value)
 * dxmm* = double-precision storage
 * xmm* = single-precision storage
 */
-void rvdbg::set_register_fp(std::uint32_t dwregister, bool precision, double value)
+void rvdbg::set_register_fp(std::uint8_t dwregister, bool precision, double value)
 {
 	r_registers.sse_set = true;
 	// Map a value - representation of an SSE register to the actual register model
 	switch (dwregister)
 	{
-	case static_cast<std::uint32_t>(rvdbg::sse_register::xmm0):
+	case static_cast<std::uint8_t>(rvdbg::sse_register::xmm0):
 		if (precision)
 		{
 			r_registers.bxmm0 = 1;
@@ -389,7 +408,7 @@ void rvdbg::set_register_fp(std::uint32_t dwregister, bool precision, double val
 		r_registers.bxmm0 = 2;
 		r_registers.xmm0 = static_cast<float>(value);
 		return;
-	case static_cast<std::uint32_t>(rvdbg::sse_register::xmm1):
+	case static_cast<std::uint8_t>(rvdbg::sse_register::xmm1):
 		if (precision)
 		{
 			r_registers.bxmm1 = 1;
@@ -399,7 +418,7 @@ void rvdbg::set_register_fp(std::uint32_t dwregister, bool precision, double val
 		r_registers.bxmm1 = 2;
 		r_registers.xmm1 = static_cast<float>(value);
 		return;
-	case static_cast<std::uint32_t>(rvdbg::sse_register::xmm2):
+	case static_cast<std::uint8_t>(rvdbg::sse_register::xmm2):
 		if (precision)
 		{
 			r_registers.bxmm2 = 1;
@@ -409,7 +428,7 @@ void rvdbg::set_register_fp(std::uint32_t dwregister, bool precision, double val
 		r_registers.bxmm2 = 2;
 		r_registers.xmm2 = static_cast<float>(value);
 		return;
-	case static_cast<std::uint32_t>(rvdbg::sse_register::xmm3):
+	case static_cast<std::uint8_t>(rvdbg::sse_register::xmm3):
 		if (precision)
 		{
 			r_registers.bxmm3 = 1;
@@ -419,7 +438,7 @@ void rvdbg::set_register_fp(std::uint32_t dwregister, bool precision, double val
 		r_registers.bxmm3 = 2;
 		r_registers.xmm3 = static_cast<float>(value);
 		return;
-	case static_cast<std::uint32_t>(rvdbg::sse_register::xmm4):
+	case static_cast<std::uint8_t>(rvdbg::sse_register::xmm4):
 		if (precision)
 		{
 			r_registers.bxmm4 = 1;
@@ -429,7 +448,7 @@ void rvdbg::set_register_fp(std::uint32_t dwregister, bool precision, double val
 		r_registers.bxmm4 = 2;
 		r_registers.xmm4 = static_cast<float>(value);
 		return;
-	case static_cast<std::uint32_t>(rvdbg::sse_register::xmm5):
+	case static_cast<std::uint8_t>(rvdbg::sse_register::xmm5):
 		if (precision)
 		{
 			r_registers.bxmm5 = 1;
@@ -439,7 +458,7 @@ void rvdbg::set_register_fp(std::uint32_t dwregister, bool precision, double val
 		r_registers.bxmm5 = 2;
 		r_registers.xmm5 = static_cast<float>(value);
 		return;
-	case static_cast<std::uint32_t>(rvdbg::sse_register::xmm6):
+	case static_cast<std::uint8_t>(rvdbg::sse_register::xmm6):
 		if (precision)
 		{
 			r_registers.bxmm6 = 1;
@@ -449,7 +468,7 @@ void rvdbg::set_register_fp(std::uint32_t dwregister, bool precision, double val
 		r_registers.bxmm6 = 2;
 		r_registers.xmm6 = static_cast<float>(value);
 		return;
-	case static_cast<std::uint32_t>(rvdbg::sse_register::xmm7):
+	case static_cast<std::uint8_t>(rvdbg::sse_register::xmm7):
 		if (precision)
 		{
 			r_registers.bxmm7 = 1;
@@ -463,7 +482,7 @@ void rvdbg::set_register_fp(std::uint32_t dwregister, bool precision, double val
 }
 
 /* Set the exception mode for the debug session */
-void rvdbg::set_exception_mode(dispatcher::exception_type exception_status_mode)
+void rvdbg::set_exception_mode(const dispatcher::exception_type& exception_status_mode)
 {
 	exception_mode = exception_status_mode;
 }
@@ -493,7 +512,7 @@ dispatcher::pool_sect rvdbg::get_current_section()
 }
 
 /* Return the current sector being used to store sections for a debug session */
-std::array<dispatcher::pool_sect, 128> rvdbg::get_sector()
+std::array<dispatcher::pool_sect, 128>& rvdbg::get_sector()
 {
 	return sector;
 }
