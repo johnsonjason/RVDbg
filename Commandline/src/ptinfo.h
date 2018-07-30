@@ -4,6 +4,6 @@
 #include <TlHelp32.h>
 #include <string>
 
-DWORD FindProcessIdFromProcessName(const std::wstring processName);
+std::uint32_t getpid_n(const std::wstring& processName);
 
 #endif
