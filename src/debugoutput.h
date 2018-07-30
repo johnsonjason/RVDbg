@@ -8,8 +8,8 @@
 
 namespace dbg_io
 {
-	void send_dbg_registers(SOCKET server, std::uint8_t protocol, std::uint32_t eip, rvdbg::virtual_registers registers);
-	void send_dbg_get(SOCKET server, dispatcher::exception_type dbg_exception_type, dispatcher::pool_sect segment);
+	void send_dbg_registers(SOCKET server, std::uint8_t protocol, std::uint32_t eip, rvdbg::virtual_registers& registers);
+	void send_dbg_get(SOCKET server, dispatcher::exception_type dbg_exception_type, dispatcher::pool_sect& segment);
 };
 
 #endif
