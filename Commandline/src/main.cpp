@@ -1,74 +1,63 @@
+// RedViceDebugger.cpp : Defines the entry point for the console application.
+//
+
+#include "stdafx.h"
 #include "injector.h"
+#include "ptinfo.h"
 #include <winsock.h>
 #include <iostream>
+#include <array>
 #pragma comment(lib, "wsock32.lib")
 
 HANDLE hStdout;
-SOCKET ManagerClient;
+SOCKET manager_client;
 
-void Welcome()
+void clear_console(HANDLE stdhandle)
 {
-	hStdout = GetStdHandle(STD_OUTPUT_HANDLE);
-
-	SetConsoleTextAttribute(hStdout, FOREGROUND_RED | FOREGROUND_INTENSITY);
-
-	std::cout << R"(                                                                                                                     
-  ____          _  __     ___            ____       _                                 
- |  _ \ ___  __| | \ \   / (_) ___ ___  |  _ \  ___| |__  _   _  __ _  __ _  ___ _ __ 
- | |_) / _ \/ _` |  \ \ / /| |/ __/ _ \ | | | |/ _ \ '_ \| | | |/ _` |/ _` |/ _ \ '__|
- |  _ <  __/ (_| |   \ V / | | (_|  __/ | |_| |  __/ |_) | |_| | (_| | (_| |  __/ |   
- |_| \_\___|\__,_|    \_/  |_|\___\___| |____/ \___|_.__/ \__,_|\__, |\__, |\___|_|   
-                                                                |___/ |___/          
-			  )" << std::endl;
-
-	SetConsoleTextAttribute(hStdout, FOREGROUND_BLUE | FOREGROUND_INTENSITY);
-	std::cout << R"(
-  ____               _                        __ _     _    _  _   
- |  _ \             | |                      / _(_)   | |  | || |  
- | |_) |_   _       | | __ _ ___  ___  _ __ | |_ _ ___| |__| || |_ 
- |  _ <| | | |  _   | |/ _` / __|/ _ \| '_ \|  _| / __| '_ \__   _|
- | |_) | |_| | | |__| | (_| \__ \ (_) | | | | | | \__ \ | | | | |  
- |____/ \__, |  \____/ \__,_|___/\___/|_| |_|_| |_|___/_| |_| |_|  
-         __/ |                                                     
-        |___/            	 )" << std::endl;
-
-	SetConsoleTextAttribute(hStdout, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+	DWORD cwritten;
+	CONSOLE_SCREEN_BUFFER_INFO csbi;
+	COORD coordinates = { 0, };
+	GetConsoleScreenBufferInfo(stdhandle, &csbi);
+	FillConsoleOutputCharacterW(stdhandle, static_cast<TCHAR>(' '), csbi.dwSize.X * csbi.dwSize.Y, coordinates, &cwritten);
+	SetConsoleCursorPosition(stdhandle, coordinates);
 }
 
-DWORD WINAPI Listener(LPVOID lpParam)
+DWORD WINAPI dbg_handler(LPVOID lpParam)
 {
-#define NEWLINE puts("");
-	char recvbuffer[356];
+	std::array<char, 512> recvbuffer;
 	while (true)
 	{
-		memset(recvbuffer, 0, sizeof(recvbuffer));
-		recv(ManagerClient, recvbuffer, sizeof(recvbuffer), 0);
-		if (std::string(recvbuffer) == std::string("!DbgModeOn"))
+		std::memset(recvbuffer.data(), 0, recvbuffer.size());
+		recv(manager_client, recvbuffer.data(), recvbuffer.size(), 0);
+		std::string recvstring(recvbuffer.data()+1);
+
+		if (recvstring == "!dbgmode1")
 		{
 			SetConsoleTextAttribute(hStdout, FOREGROUND_GREEN | FOREGROUND_INTENSITY);
-			puts("    Debugger is on");
+			std::cout << "\nDebugger is on\n";
 			SetConsoleTextAttribute(hStdout, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+			continue;
 		}
-		else if (recvbuffer[0] == '$')
+		switch (recvbuffer[0])
 		{
-			puts("GET>");
+		case '$':
+			std::cout << "GET>\n";
 			SetConsoleTextAttribute(hStdout, FOREGROUND_GREEN | FOREGROUND_INTENSITY);
-			puts(recvbuffer + 1);
+			std::cout << recvstring << std::endl;
 			SetConsoleTextAttribute(hStdout, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
-		}
-		else if (recvbuffer[0] == '^')
-		{
-			puts("DBGGET>");
+			break;
+		case '^':
+			std::cout << "DBGGET>\n";
 			SetConsoleTextAttribute(hStdout, FOREGROUND_GREEN | FOREGROUND_INTENSITY);
-			puts(recvbuffer + 1);
+			std::cout << recvstring << std::endl;
 			SetConsoleTextAttribute(hStdout, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
-		}
-		else if (recvbuffer[0] == '+')
-		{
-			puts("DBGREG>");
+			break;
+		case '+':
+			std::cout << "DBGREG>\n";
 			SetConsoleTextAttribute(hStdout, FOREGROUND_GREEN | FOREGROUND_INTENSITY);
-			puts(recvbuffer + 1);
+			std::cout << recvstring << std::endl;
 			SetConsoleTextAttribute(hStdout, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+			break;
 		}
 	}
 
@@ -78,102 +67,80 @@ DWORD WINAPI Listener(LPVOID lpParam)
 
 int main(void)
 {
-	Welcome();
+	const std::wstring dll_path = L"RedViceInternal.dll";
+	hStdout = GetStdHandle(STD_OUTPUT_HANDLE);
 	WSAData wsaData;
 	WSAStartup(MAKEWORD(2, 2), &wsaData);
-	
-	ManagerClient = NULL;
+	std::ios::sync_with_stdio(false);
 
-	SOCKET ManagerSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+acquire_connection_and_process:
 
-	SOCKADDR_IN ManagerAddress = { 0 };
-	ManagerAddress.sin_addr.s_addr = inet_addr("127.0.0.1");
-	ManagerAddress.sin_port = htons(8888);
-	ManagerAddress.sin_family = AF_INET;
+	SOCKET manager_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	SOCKADDR_IN manager_address = { 0 };
+	manager_address.sin_addr.s_addr = inet_addr("127.0.0.1");
+	manager_address.sin_port = htons(8888);
+	manager_address.sin_family = AF_INET;
 
-	bind(ManagerSocket, (SOCKADDR*)&ManagerAddress, sizeof(ManagerAddress));
-	puts("\n\n--\n\n");
-	std::wstring Processname;
-	std::cout << "Process name: ";
-	std::getline(std::wcin, Processname);
-	DWORD ProcessId = FindProcessIdFromProcessName(Processname);
-	DLLInject(ProcessId, "Filepath");
-	listen(ManagerSocket, 1);
-	ManagerClient = accept(ManagerSocket, NULL, NULL);
+	bind(manager_socket, (SOCKADDR*)&manager_address, sizeof(manager_address));
 
-	if (ManagerClient != NULL)
+	std::cout << "RVDbg: Process name: ";
+	std::wstring generic_name;
+
+	std::getline(std::wcin, generic_name);
+	std::uint32_t dbg_pid = getpid_n(generic_name);
+	generic_name.clear();
+
+	std::cout << "RVDbg: DLL path (Press enter if there is no special path): ";
+	std::getline(std::wcin, generic_name);
+
+	if (generic_name.size() > 0)
 	{
-		puts("\nConnection established with debugger\n");
-		HANDLE ListenThread = CreateThread(0, 0, Listener, 0, 0, 0);
-
-		BOOLEAN Commandline = TRUE;
-		std::string receiver;
-		DWORD Address = NULL;
-
-		char recvbuffer[128];
-
-		while (Commandline)
-		{
-			receiver.clear();
-			memset(recvbuffer, 0, sizeof(recvbuffer));
-			std::getline(std::cin, receiver);
-
-			if (receiver.substr(0, std::string("!Symbol @").length()) == std::string("!Symbol @"))
-			{
-				if (!receiver.substr(std::string("!Symbol @").length(), receiver.size()).empty())
-				{
-					std::string rcvr = receiver.substr(std::string("!Symbol @ ").length(), receiver.length());
-					if (rcvr.length() == 8 && receiver.at(std::string("!Symbol @ ").length()) != (char)"0")
-						receiver.insert(std::string("!Symbol @ ").length(), "0");
-					send(ManagerClient, receiver.c_str(), receiver.size(), 0);
-				}
-			}
-
-			else if (receiver == std::string("!Breakpoint"))
-				send(ManagerClient, receiver.c_str(), receiver.size(), 0);
-			else if (receiver.substr(0, std::string("!Undo ").length()) == std::string("!Undo "))
-				send(ManagerClient, receiver.c_str(), receiver.size(), 0);
-			else if (receiver == std::string("!Get"))
-				send(ManagerClient, receiver.c_str(), receiver.size(), 0);
-
-			else if (receiver == std::string("!DbgGet"))
-				send(ManagerClient, receiver.c_str(), receiver.size(), 0);
-
-			else if (receiver == std::string("!DbgDisplayRegisters"))
-				send(ManagerClient, receiver.c_str(), receiver.size(), 0);
-			else if (receiver == std::string("!xmm-f"))
-				send(ManagerClient, receiver.c_str(), receiver.size(), 0);
-			else if (receiver == std::string("!xmm-d"))
-				send(ManagerClient, receiver.c_str(), receiver.size(), 0);
-			else if (receiver == std::string("!DbgRun"))
-				send(ManagerClient, receiver.c_str(), receiver.size(), 0);
-
-			else if (receiver.substr(0, std::string("!setreg").length()) == std::string("!setreg"))
-			{
-				if (!receiver.substr(std::string("!setreg ?").length(), receiver.size()).empty())
-					send(ManagerClient, receiver.c_str(), receiver.size(), 0);
-			}
-			else if (receiver.substr(0, std::string("!fsetreg").length()) == std::string("!fsetreg"))
-			{
-				if (!receiver.substr(std::string("!fsetreg ?").length(), receiver.size()).empty())
-					send(ManagerClient, receiver.c_str(), receiver.size(), 0);
-			}
-			else if (receiver.substr(0, std::string("!dsetreg").length()) == std::string("!dsetreg"))
-			{
-				if (!receiver.substr(std::string("!dsetreg ?").length(), receiver.size()).empty())
-					send(ManagerClient, receiver.c_str(), receiver.size(), 0);
-			}
-			else if (receiver == std::string("!Exit"))
-			{
-				send(ManagerClient, receiver.c_str(), receiver.size(), 0);
-				Commandline = FALSE;
-				break;
-			}
-
-		}
-		TerminateThread(ListenThread, 0);
-		CloseHandle(ListenThread);
+		std::wcout << "RVDbg: Loading DLL from: " << generic_name;
+		std::cout << "RVDbg: DLL load - status: " << dll_inject(dbg_pid, generic_name);
 	}
-    return 0;
+	else
+	{
+		std::array<wchar_t, 256> directory;
+		GetCurrentDirectoryW(directory.size(), directory.data());
+		std::wstring dll_path = std::wstring(directory.data()) + L"\\RedViceInternal.dll";
+		std::wcout << "RVDbg: Loading DLL from: " << directory.data() << L"\\RedViceInternal.dll\n";
+		dll_inject(dbg_pid, dll_path);
+	}
+
+	std::cout << "\nRVDbg: Trying to connect with debugger...\n";
+	listen(manager_socket, 1);
+	manager_client = accept(manager_socket, NULL, NULL);
+
+	if (manager_client == INVALID_SOCKET)
+	{
+		goto acquire_connection_and_process;
+	}
+
+	std::cout << "RVDbg: Debugger connected\n";
+
+	HANDLE hdbg_handler = CreateThread(0, 0, dbg_handler, 0, 0, 0);
+
+	bool command_processor = true;
+	while (command_processor)
+	{
+		std::string command;
+		std::getline(std::cin, command);
+
+		if (command == "!exit")
+		{
+			send(manager_client, command.c_str(), command.size(), 0);
+			command_processor = false;
+			break;
+		}
+		else
+		{
+			send(manager_client, command.c_str(), command.size(), 0);
+		}
+	}
+
+	TerminateThread(hdbg_handler, 0);
+	CloseHandle(hdbg_handler);
+	return 0;
 }
+
 
