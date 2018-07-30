@@ -19,14 +19,7 @@
 #define MEMORY_EXCEPTION_CONTINUE 3
 
 #define MOD_OPT 30
-
-static bool use_module;
-
-static CONDITION_VARIABLE run_condition;
-static CRITICAL_SECTION run_lock;
-
-static std::uint8_t g_Field[128];
-
+static bool use_module = false;
 
 namespace rvdbg
 {
@@ -46,14 +39,14 @@ namespace rvdbg
 		// sse_set specifies whether xmm registers were modified
 		bool sse_set;
 		// bxmm* - b is bool, bxmm* specifies the type of precision used for the xmm register
-		bool bxmm0; 
-		bool bxmm1;
-		bool bxmm2;
-		bool bxmm3;
-		bool bxmm4;
-		bool bxmm5;
-		bool bxmm6;
-		bool bxmm7; 
+		std::uint8_t bxmm0; 
+		std::uint8_t bxmm1;
+		std::uint8_t bxmm2;
+		std::uint8_t bxmm3;
+		std::uint8_t bxmm4;
+		std::uint8_t bxmm5;
+		std::uint8_t bxmm6;
+		std::uint8_t bxmm7;
 		// double precision registers
 		double dxmm0;
 		double dxmm1;
@@ -105,7 +98,11 @@ namespace rvdbg
 		suspend_all,
 		suspend_single,
 		suspend_continue,
-		suspend_single_step
+		suspend_single_step,
+		mod_suspend_all,
+		mod_suspend_single,
+		mod_suspend_continue,
+		mod_suspend_single_step
 	};
 
 	void set_module(bool use, std::string origin_mod_name, std::string mod_copy_name);
@@ -121,11 +118,11 @@ namespace rvdbg
 	void detach_debugger();
 	void continue_debugger();
 
-	void set_register(std::uint32_t dwregister, std::uint32_t value);
-	void set_register_fp(std::uint32_t dwregister, bool precision, double value);
+	void set_register(std::uint8_t dwregister, std::uint32_t value);
+	void set_register_fp(std::uint8_t dwregister, bool precision, double value);
 	virtual_registers get_registers();
 
-	void set_exception_mode(dispatcher::exception_type exception_status_mode);
+	void set_exception_mode(const dispatcher::exception_type& exception_status_mode);
 	dispatcher::exception_type get_exception_mode();
 
 	std::uint32_t get_dbg_exception_address();
@@ -136,8 +133,7 @@ namespace rvdbg
 	void remove_thread(HANDLE hthread);
 
 	std::size_t get_sector_size();
-	std::array<dispatcher::pool_sect, 128> get_sector();
+	std::array<dispatcher::pool_sect, 128>& get_sector();
 	dispatcher::pool_sect get_current_section();
 }
-
 #endif
