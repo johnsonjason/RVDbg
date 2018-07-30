@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <array>
 #include "..\dbgredefs.h"
+
 namespace dispatcher
 {
 	/* specifies information about the exception in this section */
@@ -51,8 +52,8 @@ namespace dispatcher
 	void raise_page_av(std::uint8_t* ptr, std::uint32_t save, bool on);
 	void raise_breakpoint_excpt(std::uint8_t* ptr, std::uint8_t save, bool on);
 	void raise_priv_code_excpt(std::uint8_t* ptr, std::uint8_t save, bool on);
-	void* handle_exception(pool_sect segment, std::string module_name, bool constant);
-	std::size_t check_sector(std::array<dispatcher::pool_sect, 128>& sector);
+	void* handle_exception(dispatcher::pool_sect& segment, std::string& module_name, bool constant);
+	std::size_t check_sector(std::array<dispatcher::pool_sect, 128>& sector, std::uint32_t address);
 	std::size_t search_sector(std::array<dispatcher::pool_sect, 128>& sector, std::uint32_t address);
 	void unlock_sector(std::array<dispatcher::pool_sect, 128>& sector, std::size_t index);
 	void lock_sector(std::array<dispatcher::pool_sect, 128>& sector, std::size_t index);
