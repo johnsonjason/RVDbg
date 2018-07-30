@@ -1,4 +1,3 @@
-// by jasonfish4
 #ifndef IATRESOLVE
 #define IATRESOLVE
 #include <windows.h>
