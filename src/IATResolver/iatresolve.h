@@ -15,7 +15,7 @@ namespace iat_resolution
 
 	imp_at get_iat(LPCSTR module_name);
 
-	std::uint32_t calc_virtual_page_count(imp_at iat);
+	std::uint32_t calc_virtual_page_count(imp_at& iat);
 
 	void resolve_iat(LPCSTR first_module, LPCSTR copy_module);
 }
