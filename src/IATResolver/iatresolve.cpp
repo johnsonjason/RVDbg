@@ -1,3 +1,4 @@
+// by jasonfish4
 #include "stdafx.h"
 #include "iatresolve.h"
 
@@ -14,7 +15,7 @@ iat_resolution::imp_at iat_resolution::get_iat(LPCSTR module_name)
 	return retn;
 }
 
-std::uint32_t iat_resolution::calc_virtual_page_count(iat_resolution::imp_at iat)
+std::uint32_t iat_resolution::calc_virtual_page_count(iat_resolution::imp_at& iat)
 {
 	MEMORY_BASIC_INFORMATION mbi;
 	VirtualQuery(iat.address, &mbi, sizeof(mbi));
@@ -22,7 +23,9 @@ std::uint32_t iat_resolution::calc_virtual_page_count(iat_resolution::imp_at iat
 	std::uint32_t precedent = mbi.RegionSize;
 
 	if (iat.size < precedent)
+	{
 		return 1;
+	}
 
 	return (iat.size / precedent);
 }
@@ -35,7 +38,7 @@ void iat_resolution::resolve_iat(LPCSTR first_module, LPCSTR copy_module)
 	std::uint32_t vpc = calc_virtual_page_count(origin_module_iat);
 	std::uint32_t old_protect;
 
-	VirtualProtect(copy_module_iat.address, vpc, static_cast<std::uint32_t>(dbg_redef::page_protection::page_xrw), reinterpret_cast<unsigned long*>(&old_protect));
+	VirtualProtect(copy_module_iat.address, vpc, static_cast<std::uint32_t>(dbg_redef::page_protection::page_rwx), reinterpret_cast<unsigned long*>(&old_protect));
 	memcpy(copy_module_iat.address, origin_module_iat.address, origin_module_iat.size);
 	VirtualProtect(copy_module_iat.address, vpc, old_protect, reinterpret_cast<unsigned long*>(&old_protect));
 }
