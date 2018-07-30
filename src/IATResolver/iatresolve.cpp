@@ -1,4 +1,3 @@
-// by jasonfish4
 #include "stdafx.h"
 #include "iatresolve.h"
 
