@@ -32,7 +32,7 @@ void str_dbg_run();
 
 std::string g_module_name = ""; // Name of the image
 std::string g_ext_module_name = ""; // Name of the copy image
-const char* g_file_path; // File location to copy image
+const std::wstring g_file_path; // File location to copy image
 std::uint32_t g_server;
 std::uint8_t g_protocol_interface;
 std::uint32_t symbol;
