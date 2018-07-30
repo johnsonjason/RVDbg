@@ -2,8 +2,9 @@
 #define INJECTOR
 #include <windows.h>
 #include <cstdint>
-#include "../dbgredefs.h"
+#include <string>
+#include "dbgredefs.h"
 
-bool dll_inject(std::uint32_t id, const char* dll);
+std::uint32_t dll_inject(std::uint32_t id, const std::wstring& dll);
 
 #endif
