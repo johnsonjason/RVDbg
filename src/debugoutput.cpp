@@ -1,4 +1,4 @@
-##include "stdafx.h"
+#include "stdafx.h"
 #include "debugoutput.h"
 
 void dbg_io::send_dbg_registers(SOCKET server, std::uint8_t protocol, std::uint32_t eip, rvdbg::virtual_registers& registers)
@@ -42,12 +42,12 @@ void dbg_io::send_dbg_get(SOCKET server, dispatcher::exception_type dbg_exceptio
 	std::array<char, 512> snbuffer;
 	if (dbg_exception_type != dispatcher::exception_type::page_exception)
 	{
-		std::snprintf(snbuffer.data(), snbuffer.size(), "^Exception Type: IMM\r\nSymbol: 0x%08X\r\nRetn: 0x%08X\r\nindex:%d\r\n", 
+		std::snprintf(snbuffer.data(), snbuffer.size(), "^Exception Type: IMM\r\nSymbol: %08X\r\nRetn: %08X\r\nindex: %d\r\n", 
 			segment.dbg_exception_address, segment.return_address, segment.index);
 	}
 	else
 	{
-		std::snprintf(snbuffer.data(), snbuffer.size(), "^Exception Type: PAGE\r\nSymbol: 0x%08X\r\nRetn: 0x%08X\r\nindex:%d\r\n",
+		std::snprintf(snbuffer.data(), snbuffer.size(), "^Exception Type: PAGE\r\nSymbol: %08X\r\nRetn: %08X\r\nindex: %d\r\n",
 			segment.dbg_exception_address, segment.return_address, segment.index);
 	}
 	send(server, snbuffer.data(), snbuffer.size(), 0);
