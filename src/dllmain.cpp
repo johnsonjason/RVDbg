@@ -133,7 +133,7 @@ void str_breakpoint()
 	std::size_t exception_element = dispatcher::check_sector(rvdbg::get_sector(), symbol);
 	if (exception_element > rvdbg::get_sector_size())
 	{
-		std::cout << "Dbg: {SetBreakpoint} Failed to get sector element" << std::endl;
+		std::cout << "Dbg - {SetBreakpoint} Failed to get sector element" << std::endl;
 		return;
 	}
 	MEMORY_BASIC_INFORMATION mbi;
@@ -141,7 +141,7 @@ void str_breakpoint()
 	{
 		if (mbi.Protect != static_cast<unsigned long>(dbg_redef::page_protection::page_na))
 		{
-			std::cout << "Dbg: {SetBreakpoint} Placing breakpoint @ exception address" << std::endl;
+			std::cout << "Dbg - {SetBreakpoint} Placing breakpoint @ exception address" << std::endl;
 			dispatcher::add_exception(rvdbg::get_sector(), exception_element, rvdbg::get_exception_mode(), symbol);
 		}
 	}
@@ -151,7 +151,7 @@ void str_get(std::array<char, 128>& snbuffer, std::size_t index)
 {
 	if (index < rvdbg::get_sector_size())
 	{
-		std::snprintf(snbuffer.data(), snbuffer.size(), "$Symbol: 0x%02X\r\nindex:%d\r\n", symbol, index);
+		std::snprintf(snbuffer.data(), snbuffer.size(), "$Symbol: %08X\r\nindex: %d\r\n", symbol, index);
 		send(g_server, snbuffer.data(), snbuffer.size(), 0);
 	}
 	else
@@ -164,10 +164,10 @@ void dbg_undo(std::size_t index)
 {
 	if (rvdbg::get_sector()[index].used == false)
 	{
-		std::cout << "Dbg: Could not undo symbol, it is not registered" << std::endl;
+		std::cout << "Dbg - Could not undo symbol, it is not registered" << std::endl;
 		return;
 	}
-	std::cout << "Dbg: Undoing registered symbol: " << index << std::endl;
+	std::cout << "Dbg - Undoing registered symbol: " << index << std::endl;
 	if (index < rvdbg::get_sector_size())
 	{
 		std::uint32_t old_protect;
@@ -228,7 +228,16 @@ unsigned long __stdcall dispatch_initializer(void* lpParam)
 	connect(g_server, reinterpret_cast<sockaddr*>(&g_server_address), sizeof(g_server_address));
 
 	rvdbg::attach_debugger();
-	std::cout << "Dbg: {Environment} RVDbg has attached to the process\n";
+
+	std::array<char, 260> window_title_buffer;
+	GetWindowTextA(GetConsoleWindow(), window_title_buffer.data(), 260);
+
+	std::string window_title(window_title_buffer.begin(), window_title_buffer.end());
+	window_title = "[DEBUG MODE] " + window_title;
+
+	SetWindowTextA(GetConsoleWindow(), window_title.c_str());
+
+	std::cout << "Dbg - {Environment} RVDbg has attached to the process\n";
 	rvdbg::set_module(false, g_module_name, g_ext_module_name);
 	rvdbg::set_pause_mode(rvdbg::suspension_mode::suspend_all);
 	rvdbg::assign_thread(g_threads[0]);
@@ -250,17 +259,17 @@ unsigned long __stdcall dispatch_initializer(void* lpParam)
 		try
 		{
 			str_comparator_function local_func = opt_func_table.at(receiver);
-			std::cout << "Dbg: {StringParser} Mapping string to function table...\n" << std::endl;
+			std::cout << "Dbg - {StringParser} Mapping string to function table...\n" << std::endl;
 			local_func();
 		}
 		catch (const std::out_of_range& e)
 		{
-			std::cerr << "Dbg: {StringParser} String not mappable to function table... Parsing" << std::endl;
+			std::cerr << "Dbg - {StringParser} String not mappable to function table... Parsing" << std::endl;
 
 			if (receiver.substr(0, 9) == "!symbol @")
 			{
 				std::string symbol_ptr_str = receiver.substr(10, receiver.size());
-				std::cout << "Dbg: Acquiring symbol: " << std::hex << symbol_ptr_str << "\n";
+				std::cout << "Dbg - Acquiring symbol: " << std::hex << symbol_ptr_str << "\n";
 				dbg_conversion_stream.str(symbol_ptr_str);
 				if (std::all_of(symbol_ptr_str.begin(), symbol_ptr_str.end(), ::isxdigit))
 				{
@@ -268,7 +277,7 @@ unsigned long __stdcall dispatch_initializer(void* lpParam)
 				}
 				else
 				{
-					std::cout << "Dbg: Symbol has incorrect format\n";
+					std::cout << "Dbg - Symbol has incorrect format\n";
 				}
 			}
 			else if (receiver.substr(0, 7) == "!setreg")
@@ -279,12 +288,12 @@ unsigned long __stdcall dispatch_initializer(void* lpParam)
 				dbg_conversion_stream >> key;
 				dbg_conversion_stream.str(std::string());
 
-				std::cout << "Dbg: {DWORD} Register key: " << key << "\n";
+				std::cout << "Dbg - {DWORD} Register key: " << key << "\n";
 
 				dbg_conversion_stream << receiver.substr(10, receiver.size());
 				dbg_conversion_stream >> std::hex >> value;
 
-				std::cout << "Dbg: {DWORD} Register value set: " << value << "\n";
+				std::cout << "Dbg - {DWORD} Register value set: " << value << "\n";
 
 				dbg_conversion_stream.str(std::string());
 				register_value(key, value);
@@ -298,12 +307,12 @@ unsigned long __stdcall dispatch_initializer(void* lpParam)
 				dbg_conversion_stream >> key;
 				dbg_conversion_stream.str(std::string());
 
-				std::cout << "Dbg: {FLOAT} Register key: " << key << "\n";
+				std::cout << "Dbg - {FLOAT} Register key: " << key << "\n";
 
 				dbg_conversion_stream << receiver.substr(11, receiver.size());
 				dbg_conversion_stream >> value;
 
-				std::cout << "Dbg: {FLOAT} Register value set: " << value << "\n";
+				std::cout << "Dbg - {FLOAT} Register value set: " << value << "\n";
 				dbg_conversion_stream.str(std::string());
 				register_value_fp(key, false, value);
 			}
@@ -315,12 +324,12 @@ unsigned long __stdcall dispatch_initializer(void* lpParam)
 				dbg_conversion_stream >> key;
 				dbg_conversion_stream.str(std::string());
 
-				std::cout << "Dbg: {DOUBLE} Register key: " << key << "\n";
+				std::cout << "Dbg - {DOUBLE} Register key: " << key << "\n";
 
 
 				dbg_conversion_stream.str(receiver.substr(11, receiver.size()));
 				dbg_conversion_stream >> value;
-				std::cout << "Dbg: {DOUBLE} Register value set: " << value << "\n";
+				std::cout << "Dbg - {DOUBLE} Register value set: " << value << "\n";
 				dbg_conversion_stream.str(std::string());
 				register_value_fp(key, true, value);
 			}
@@ -334,13 +343,13 @@ unsigned long __stdcall dispatch_initializer(void* lpParam)
 			}
 			else if (receiver == std::string("!get"))
 			{
-				std::cout << "Dbg: Acquiring information about current symbol\n";
+				std::cout << "Dbg - Acquiring information about current symbol\n";
 				std::size_t index = dispatcher::search_sector(rvdbg::get_sector(), symbol);
 				str_get(snbuffer, index);
 			}
 			else if (receiver == std::string("!exit"))
 			{
-				std::cout << "Dbg: Exiting..." << std::endl;
+				std::cout << "Dbg - Exiting..." << std::endl;
 				str_dbg_run();
 				break;
 			}
