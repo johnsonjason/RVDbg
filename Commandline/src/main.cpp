@@ -25,38 +25,42 @@ void clear_console(HANDLE stdhandle)
 DWORD WINAPI dbg_handler(LPVOID lpParam)
 {
 	std::array<char, 512> recvbuffer;
+
 	while (true)
 	{
 		std::memset(recvbuffer.data(), 0, recvbuffer.size());
 		recv(manager_client, recvbuffer.data(), recvbuffer.size(), 0);
-		std::string recvstring(recvbuffer.data()+1);
 
-		if (recvstring == "!dbgmode1")
+		std::string recvstring(recvbuffer.data()+1);
+		std::string entrystring(recvbuffer.data());
+
+		if (entrystring == "!dbgmode1")
 		{
+			SetConsoleTextAttribute(hStdout, FOREGROUND_RED | FOREGROUND_INTENSITY);
+			std::cout << "Debugger is on\n\n";
 			SetConsoleTextAttribute(hStdout, FOREGROUND_GREEN | FOREGROUND_INTENSITY);
-			std::cout << "\nDebugger is on\n";
-			SetConsoleTextAttribute(hStdout, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
 			continue;
 		}
+
 		switch (recvbuffer[0])
 		{
 		case '$':
-			std::cout << "GET>\n";
-			SetConsoleTextAttribute(hStdout, FOREGROUND_GREEN | FOREGROUND_INTENSITY);
+			std::cout << "\nGET>\n";
+			SetConsoleTextAttribute(hStdout, FOREGROUND_RED | FOREGROUND_INTENSITY);
 			std::cout << recvstring << std::endl;
-			SetConsoleTextAttribute(hStdout, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+			SetConsoleTextAttribute(hStdout, FOREGROUND_GREEN | FOREGROUND_INTENSITY);
 			break;
 		case '^':
-			std::cout << "DBGGET>\n";
-			SetConsoleTextAttribute(hStdout, FOREGROUND_GREEN | FOREGROUND_INTENSITY);
+			std::cout << "\nDBGGET>\n";
+			SetConsoleTextAttribute(hStdout, FOREGROUND_RED | FOREGROUND_INTENSITY);
 			std::cout << recvstring << std::endl;
-			SetConsoleTextAttribute(hStdout, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+			SetConsoleTextAttribute(hStdout, FOREGROUND_GREEN | FOREGROUND_INTENSITY);
 			break;
 		case '+':
-			std::cout << "DBGREG>\n";
-			SetConsoleTextAttribute(hStdout, FOREGROUND_GREEN | FOREGROUND_INTENSITY);
+			std::cout << "\nDBGREG>\n";
+			SetConsoleTextAttribute(hStdout, FOREGROUND_RED| FOREGROUND_INTENSITY);
 			std::cout << recvstring << std::endl;
-			SetConsoleTextAttribute(hStdout, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+			SetConsoleTextAttribute(hStdout, FOREGROUND_GREEN | FOREGROUND_INTENSITY);
 			break;
 		}
 	}
@@ -64,59 +68,92 @@ DWORD WINAPI dbg_handler(LPVOID lpParam)
 	return 0;
 }
 
-
-int main(void)
+void set_console_attributes()
 {
-	const std::wstring dll_path = L"RedViceInternal.dll";
+	RECT console_rect;
+	HWND console_handle = GetConsoleWindow();
 	hStdout = GetStdHandle(STD_OUTPUT_HANDLE);
-	WSAData wsaData;
-	WSAStartup(MAKEWORD(2, 2), &wsaData);
+
+	SetWindowLongW(console_handle, GWL_EXSTYLE, GetWindowLongW(console_handle, GWL_EXSTYLE) | WS_EX_LAYERED);
+	SetLayeredWindowAttributes(console_handle, 0, 200, LWA_ALPHA);
+	SetConsoleTextAttribute(hStdout, FOREGROUND_GREEN | FOREGROUND_INTENSITY);
+
+	GetWindowRect(console_handle, &console_rect);
+	MoveWindow(console_handle, console_rect.left, console_rect.top, 1000, 800, static_cast<BOOL>(true));
 	std::ios::sync_with_stdio(false);
+}
 
-acquire_connection_and_process:
-
-	SOCKET manager_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	SOCKADDR_IN manager_address = { 0 };
-	manager_address.sin_addr.s_addr = inet_addr("127.0.0.1");
-	manager_address.sin_port = htons(8888);
-	manager_address.sin_family = AF_INET;
-
-	bind(manager_socket, (SOCKADDR*)&manager_address, sizeof(manager_address));
-
-	std::cout << "RVDbg: Process name: ";
-	std::wstring generic_name;
-
-	std::getline(std::wcin, generic_name);
-	std::uint32_t dbg_pid = getpid_n(generic_name);
-	generic_name.clear();
-
-	std::cout << "RVDbg: DLL path (Press enter if there is no special path): ";
-	std::getline(std::wcin, generic_name);
-
+void handle_debug_attach(std::wstring& generic_name, std::uint32_t dbg_pid)
+{
 	if (generic_name.size() > 0)
 	{
-		std::wcout << "RVDbg: Loading DLL from: " << generic_name;
-		std::cout << "RVDbg: DLL load - status: " << dll_inject(dbg_pid, generic_name);
+		std::wcout << "\nRVDbg - Loading DLL from: " << generic_name;
+		dll_inject(dbg_pid, generic_name);
 	}
 	else
 	{
 		std::array<wchar_t, 256> directory;
+
 		GetCurrentDirectoryW(directory.size(), directory.data());
+
 		std::wstring dll_path = std::wstring(directory.data()) + L"\\RedViceInternal.dll";
-		std::wcout << "RVDbg: Loading DLL from: " << directory.data() << L"\\RedViceInternal.dll\n";
+		std::wcout << "RVDbg - Loading DLL from: " << directory.data() << L"\\RedViceInternal.dll\n";
+
 		dll_inject(dbg_pid, dll_path);
 	}
+}
 
-	std::cout << "\nRVDbg: Trying to connect with debugger...\n";
+void inline set_server_socket(SOCKET& _socket, SOCKADDR_IN& address_struct, std::string& address, std::uint16_t port)
+{
+	_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	address_struct.sin_addr.s_addr = inet_addr(address.c_str());
+	address_struct.sin_port = htons(port);
+	address_struct.sin_family = AF_INET;
+	bind(_socket, reinterpret_cast<SOCKADDR*>(&address_struct), sizeof(address_struct));
+}
+
+void inline init_winsock()
+{
+	WSAData wsaData;
+	WSAStartup(MAKEWORD(2, 2), &wsaData);
+}
+
+int main(void)
+{
+	const std::wstring dll_path = L"RedViceInternal.dll";
+	set_console_attributes();
+
+acquire_connection_and_process:
+
+	SOCKET manager_socket;
+	SOCKADDR_IN manager_address = { 0 };
+	init_winsock();
+	set_server_socket(manager_socket, manager_address, std::string("127.0.0.1"), 8888);
+
+	std::cout << "RVDbg - Process name: ";
+	std::wstring generic_name;
+
+	std::getline(std::wcin, generic_name);
+	std::uint32_t dbg_pid = getpid_n(generic_name);
+
+	generic_name.clear();
+
+	std::cout << "\nRVDbg - DLL path (Press enter if there is no special path): ";
+	std::getline(std::wcin, generic_name);
+	std::cout << "\nRVDbg - Trying to connect with debugger...\n";
+	handle_debug_attach(generic_name, dbg_pid);
+
 	listen(manager_socket, 1);
 	manager_client = accept(manager_socket, NULL, NULL);
 
 	if (manager_client == INVALID_SOCKET)
 	{
+		std::cout << WSAGetLastError() << std::endl;
+		closesocket(manager_socket);
 		goto acquire_connection_and_process;
 	}
 
-	std::cout << "RVDbg: Debugger connected\n";
+	std::cout << "\nRVDbg - Debugger connected\n\n";
 
 	HANDLE hdbg_handler = CreateThread(0, 0, dbg_handler, 0, 0, 0);
 
@@ -142,5 +179,6 @@ acquire_connection_and_process:
 	CloseHandle(hdbg_handler);
 	return 0;
 }
+
 
 
