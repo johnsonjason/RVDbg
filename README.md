@@ -34,7 +34,7 @@ Access Exceptions - This type of exception is a new idea in implementation. It w
 
 ## Screenshots
 
-**RVDbg - Commandline:**
+## RVDbg - Commandline:
 
 ![alt_text](https://i.imgur.com/z1aXJZP.png)
 
@@ -81,7 +81,7 @@ EAX would now be set to 0x55555555
 !exit - cleans up the program and exits it
 ```
 
-**RVDbg - GUI (Legacy):**
+## RVDbg - GUI (Legacy):
 
 ![alt text](https://i.imgur.com/vUek6Bf.png)
 
