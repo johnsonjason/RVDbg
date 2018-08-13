@@ -34,12 +34,6 @@ Access Exceptions - This type of exception is a new idea in implementation. It w
 
 ## Screenshots
 
-**RVDbg - GUI (Legacy):**
-
-![alt text](https://i.imgur.com/vUek6Bf.png)
-
-Enumerates through the process list, thread list of the selected process, details the exception type, memory address the exception occurred at, the return address, a breakpoint list, and the dumped contents of the 32-bit x86 registers.
-
 **RVDbg - Commandline:**
 
 ![alt_text](https://i.imgur.com/z1aXJZP.png)
@@ -86,3 +80,9 @@ EAX would now be set to 0x55555555
 ```
 !exit - cleans up the program and exits it
 ```
+
+**RVDbg - GUI (Legacy):**
+
+![alt text](https://i.imgur.com/vUek6Bf.png)
+
+This graphical user interface enumerates through the process list, thread list of the selected process, details the exception type, memory address the exception occurred at, the return address, a breakpoint list, and the dumped contents of the 32-bit x86 registers. This GUI will most likely no longer be supported.
