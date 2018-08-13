@@ -65,10 +65,10 @@ static void* call_chain()
 
 	if (rvdbg::get_pause_mode() == rvdbg::suspension_mode::suspend_all || rvdbg::get_pause_mode() == rvdbg::suspension_mode::mod_suspend_all)
 	{
-		std::cout << "InDbg: {Thread} Suspending threads" << std::endl;
+		std::cout << "InDbg - {Thread} Suspending threads\n";
 		suspend_threads(GetCurrentProcessId(), GetCurrentThreadId()); 
 		rvdbg::debugger = true;
-		std::cout << "InDbg: {Thread} Waking UI lock and self threads" << std::endl;
+		std::cout << "InDbg - {Thread} Waking UI lock and self threads\n";
 		WakeConditionVariable(&rvdbg::reprcondition); 
 		self_resume_threads(); 
 	}
@@ -80,12 +80,12 @@ static void* call_chain()
 		rvdbg::get_pause_mode() == rvdbg::suspension_mode::mod_suspend_continue)
 	{
 		r_registers.eip = dispatcher::handle_exception(sector[exception_element], sector[exception_element].module_name, true); 
-		std::cout << "InDbg: {DbgEHandlerReturn} acquired instruction pointer: " << r_registers.eip << std::endl;
+		std::cout << "InDbg - {DbgEHandlerReturn} acquired instruction pointer: " << r_registers.eip << "\n";
 	}
 	else
 	{
 		r_registers.eip = dispatcher::handle_exception(sector[exception_element], sector[exception_element].module_name, false); 
-		std::cout << "InDbg: {DbgEHandlerReturn} acquired instruction pointer: " << r_registers.eip << std::endl;
+		std::cout << "InDbg - {DbgEHandlerReturn} acquired instruction pointer: " << r_registers.eip << "\n";
 	}
 	
 	sector[exception_element].thread_id = GetCurrentThreadId();
@@ -100,22 +100,22 @@ static void* call_chain()
 		rvdbg::get_pause_mode() == rvdbg::suspension_mode::mod_suspend_all || 
 		rvdbg::get_pause_mode() == rvdbg::suspension_mode::mod_suspend_single)
 	{
-		std::cout << "InDbg: {Synchronization} Entering debugger lock" << std::endl;
+		std::cout << "InDbg - {Synchronization} Entering debugger lock" << "\n";
 
 		EnterCriticalSection(&run_lock);
 		SleepConditionVariableCS(&run_condition, &run_lock, dbg_redef::infinite); 
 		LeaveCriticalSection(&run_lock);
-		std::cout << "InDbg: {Synchronization} Exited debugger lock" << std::endl;
+		std::cout << "InDbg - {Synchronization} Exited debugger lock" << "\n";
 		if (rvdbg::get_pause_mode() != rvdbg::suspension_mode::suspend_single && 
 			rvdbg::get_pause_mode() != rvdbg::suspension_mode::suspend_continue)
 		{
-			std::cout << "InDbg: {Synchronization} Resuming threads" << std::endl;
+			std::cout << "InDbg - {Synchronization} Resuming threads" << "\n";
 			resume_threads(GetCurrentProcessId(), GetCurrentThreadId());
 		}
 
 	}
 
-	std::cout << "InDbg: {InternalDbgEnvironment} Unlocking dbg sector: " << exception_element << std::endl;
+	std::cout << "InDbg - {InternalDbgEnvironment} Unlocking dbg sector: " << exception_element << "\n";
 	dispatcher::unlock_sector(sector, exception_element);
 
 	if (rvdbg::get_pause_mode() == rvdbg::suspension_mode::suspend_continue)
@@ -125,7 +125,7 @@ static void* call_chain()
 	}
 
 	rvdbg::debugger = false;
-	std::cout << "InDbg: {InternalDbgEnvironment} returning to: " << r_registers.eip << std::endl;
+	std::cout << "InDbg - {InternalDbgEnvironment} returning to: " << r_registers.eip << "\n";
 	return r_registers.eip;
 }
 
