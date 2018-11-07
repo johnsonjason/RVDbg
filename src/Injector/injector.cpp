@@ -5,7 +5,7 @@ std::uint32_t dll_inject(std::uint32_t id, const std::wstring& dll)
 {
 	if (!id)
 	{
-		return false;
+		return 1;
 	}
 
 	HANDLE process = OpenProcess(PROCESS_ALL_ACCESS, static_cast<std::uint8_t>(false), id);
