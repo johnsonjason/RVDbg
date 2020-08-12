@@ -19,7 +19,24 @@ Debugger::DebuggerSnapshot::DebuggerSnapshot(DBG_CONTEXT_STATE PrcState, DBG_SSE
 {
 	this->ProcessorState = PrcState;
 	this->ProcessorSSEState = PrcSSEState;
-	this->StateHistory.push_back({this->ProcessorState, this->ProcessorSSEState});
+}
+
+/*++
+
+Routine Description:
+
+Assigns the temporary debugger snapshot to a new context
+
+Parameters:
+
+	NewProcessorState - State of general purpose registers and additional values
+	NewProcessorSSEState - State of SSE registers and values i.e XMM
+
+--*/
+void Debugger::DebuggerSnapshot::CopyToContext(DBG_CONTEXT_STATE& NewProcessorState, DBG_SSE_REGISTERS& NewProcessorSSEState)
+{
+	NewProcessorState = this->ProcessorState;
+	NewProcessorSSEState = this->ProcessorSSEState;
 }
 
 /*++
