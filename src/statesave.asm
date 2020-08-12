@@ -33,6 +33,9 @@ EXTERN EnterDebugState: PROC
 
 .CODE
 
+OPTION PROLOGUE:NONE 
+OPTION EPILOGUE:NONE 
+
 SAVE_REGISTER_STATE MACRO
 
 	mov [GlobalContext.dwEax], eax
@@ -86,42 +89,42 @@ RESTORE_XMM_STATE MACRO
 ENDM
 
 
-
 SaveRegisterState PROC ExceptionCode:DWORD, ExceptionContext:DWORD
 
-	cmp dword ptr [esp + 08h], 0C0000096h ; Check for C++ exceptions
-	je ArbitraryExceptionState
-	jmp BadExceptionState
+	cmp dword ptr [esp + 08h], 0C0000096h ; Avoid C++ exceptions, add a comparison for each type of debugger exception (relative to this one)
+	je ArbitraryExceptionState ; Jump to advanced exception handling
+	jmp BadExceptionState ; Jump to regular exception handling
 
 ArbitraryExceptionState:
 
-	SAVE_REGISTER_STATE
-	SAVE_XMM_STATE
+	SAVE_REGISTER_STATE ; Saves the state of the general purpose registers prior to exception handling
+	SAVE_XMM_STATE ; Saves the state of SSE registers prior to exception handling
 
-	mov eax, [esp + 11Ch]
+	mov eax, [esp + 11Ch] ; Stores the former ESP 
 	mov [GlobalContext.dwEsp], eax
 	mov eax, [eax]
 	mov [GlobalContext.dwReturnAddress], eax
 	mov eax, [esp + 14h]
-	mov [GlobalContext.dwExceptionComparator], eax
+	mov [GlobalContext.dwExceptionComparator], eax ; Should be the address of exception, which we will use to check if it exists in our registered IP exception list
 	mov eax, [esp + 08h]
 	mov [GlobalContext.dwExceptionCode], eax
 
-	call EnterDebugState
+	call EnterDebugState ; Enter advanced exception handling
 	cmp eax, 00000000h
-	je BadExceptionState
+	jne ContinueArbitraryException
 
-BadExceptionState:
+BadExceptionState: ; Exception instructions that were overwritten
 
 	mov eax, [GlobalContext.dwEax]
 	mov ecx, [esp + 04h]
 	mov ebx, [esp]
-	jmp dword ptr [RealKiUserExceptionDispatcher]
+	jmp dword ptr [RealKiUserExceptionDispatcher] ; Jump to original exception execution path
+
 ContinueArbitraryException:
 
 	RESTORE_REGISTER_STATE
 	RESTORE_XMM_STATE
 
-	jmp dword ptr [GlobalContext.dwExceptionComparator]
+	jmp dword ptr [GlobalContext.dwExceptionComparator] ; Return to exception address with restored instruction (in the case of IMMEDIATE exception)
 SaveRegisterState ENDP
 END
