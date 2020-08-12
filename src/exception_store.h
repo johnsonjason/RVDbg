@@ -3,6 +3,7 @@
 
 #include <Windows.h>
 #include <vector>
+#include <iterator>
 
 namespace Debugger
 {
@@ -31,7 +32,7 @@ namespace Debugger
 	{
 		EXCEPTION_STATE Mode;
 		BYTE SaveCode;
-		BOOLEAN UseSave;
+		bool UseSave;
 		DWORD_PTR ConditionAddress;
 		DWORD_PTR ModulePtr;
 	} EXCEPTION_BASE;
@@ -40,7 +41,8 @@ namespace Debugger
 
 	void RegisterExceptionCondition(DWORD_PTR ExceptionAddress, EXCEPTION_STATE Mode);
 	bool CloseExceptionCondition(DWORD_PTR ExceptionAddress, EXCEPTION_STATE Mode);
-	bool DiscoverExceptionCondition(DWORD_PTR ExceptionAddress, EXCEPTION_STATE Mode);
+	int DiscoverExceptionCondition(DWORD_PTR ExceptionAddress, EXCEPTION_STATE Mode);
+	void HandleException(Debugger::EXCEPTION_BASE& BaseException);
 }
 
 #endif
