@@ -1,10 +1,14 @@
 #ifndef RVDBG_H
 #define RVDBG_H
+#include <iostream>
 #include <Windows.h>
-#include <TlHelp32.h>
 #include <xmmintrin.h>
+#include "dio.h"
 #include "dbghooks.h"
 #include "exception_store.h"
+#include "thread_manager.h"
+#include <synchapi.h>
+#pragma comment(lib, "synchronization.lib")
 
 namespace Debugger
 {
@@ -16,55 +20,23 @@ namespace Debugger
 	typedef enum _GENERAL_REGISTER : DWORD
 	{
 #if defined _M_IX86
-		Eax,
-		Ebx,
-		Ecx,
-		Edx,
-		Esi,
-		Edi,
-		Ebp,
-		Esp,
-		Eip
+		Eax, Ebx, Ecx, Edx,
+		Esi, Edi, Ebp, Esp, Eip
 #elif defined _M_AMD64
-		Rax,
-		Rbx,
-		Rcx,
-		Rdx,
-		Rsi,
-		Rdi,
-		Rbp,
-		Rsp,
-		Rip,
-		R8,
-		R9,
-		R10,
-		R11,
-		R12,
-		R13,
-		R14,
-		R15
+		Rax, Rbx, Rcx, Rdx,
+		Rsi, Rdi, Rbp, Rsp,
+		Rip, R8, R9, R10,
+		R11, R12, R13, R14, R15
 #endif
 	} GENERAL_REGISTER;
 
 	typedef enum _SSE_REGISTER : DWORD
 	{
-		Xmm0,
-		Xmm1,
-		Xmm2,
-		Xmm3,
-		Xmm4,
-		Xmm5,
-		Xmm6,
-		Xmm7,
+		Xmm0, Xmm1, Xmm2, Xmm3,
+		Xmm4, Xmm5, Xmm6, Xmm7,
 #if defined _M_AMD64
-		Xmm8,
-		Xmm9,
-		Xmm10,
-		Xmm11,
-		Xmm12,
-		Xmm13,
-		Xmm14,
-		Xmm15
+		Xmm8, Xmm9, Xmm10, Xmm11,
+		Xmm12, Xmm13, Xmm14, Xmm15
 #endif
 	} SSE_REGISTER;
 
@@ -82,6 +54,7 @@ namespace Debugger
 	typedef struct _DBG_CONTEXT_STATE
 	{
 #if defined _M_IX86
+
 		DWORD dwEax;
 		DWORD dwEbx;
 		DWORD dwEcx;
@@ -154,21 +127,23 @@ namespace Debugger
 	class DebuggerSnapshot
 	{
 	public:
-		static bool bGlobalState;
-		static bool bThreadSafe;
 
 		DebuggerSnapshot(DBG_CONTEXT_STATE PrcState, DBG_SSE_REGISTERS PrcSSEState);
-		void SetSSEReg();
-		__m128 GetSSEReg();
+
+
+		void SetSSEReg(SSE_REGISTER Xmm, __m128 Value);
+		__m128 GetSSEReg(SSE_REGISTER Xmm);
+
 		void SetGeneralPurposeReg(GENERAL_REGISTER Register, DWORD_PTR Value);
 		DWORD_PTR GetGeneralPurposeReg(GENERAL_REGISTER Register);
+		void CopyToContext(DBG_CONTEXT_STATE& NewProcessorState, DBG_SSE_REGISTERS& NewProcessorSSEState);
 
 	private:
-		std::vector<std::pair<DBG_CONTEXT_STATE, DBG_SSE_REGISTERS>> StateHistory;
 		DBG_CONTEXT_STATE ProcessorState;
 		DBG_SSE_REGISTERS ProcessorSSEState;
 	};
 
+	extern bool DebuggerPauseCondition;
 	void SetProcessState(PROCESS_STATE State);
 	PROCESS_STATE GetProcessState();
 	DebuggerSnapshot* GetActiveSnapshot();
@@ -179,7 +154,7 @@ namespace Debugger
 	// Initializes subroutine hooks
 	//
 
-	void InitializeDebugInfo();
+	void InitializeDebugInfo(DWORD InputThreadId, dio::Client* Repeater);
 }
 
 extern "C" void SaveRegisterState(DWORD, DWORD);
@@ -188,5 +163,6 @@ extern "C" Debugger::DBG_CONTEXT_STATE GlobalContext;
 extern "C" Debugger::DBG_SSE_REGISTERS SSEGlobalContext;
 extern "C" PVOID RealKiUserExceptionDispatcher;
 extern "C" PVOID RetDebuggerAddress;
+
 
 #endif
