@@ -13,6 +13,7 @@ context STRUCT
 	dwReturnAddress DWORD ?
 	dwExceptionComparator DWORD ?
 	dwExceptionCode DWORD ?
+	EFlags DWORD ?
 context ENDS
 
 floatcontext STRUCT
@@ -91,6 +92,15 @@ ENDM
 
 SaveRegisterState PROC ExceptionCode:DWORD, ExceptionContext:DWORD
 
+	push eax
+	mov eax, [esp+08]
+	add eax,192
+	push ecx
+	mov ecx,[eax]
+	mov [GlobalContext.EFlags], ecx
+	pop ecx
+	pop eax
+
 	cmp dword ptr [esp + 08h], 0C0000096h ; Avoid C++ exceptions, add a comparison for each type of debugger exception (relative to this one)
 	je ArbitraryExceptionState ; Jump to advanced exception handling
 	jmp BadExceptionState ; Jump to regular exception handling
@@ -125,6 +135,8 @@ ContinueArbitraryException:
 	RESTORE_REGISTER_STATE
 	RESTORE_XMM_STATE
 
-	jmp dword ptr [GlobalContext.dwExceptionComparator] ; Return to exception address with restored instruction (in the case of IMMEDIATE exception)
+	push [GlobalContext.EFlags]
+	popfd
+	jmp dword ptr [GlobalContext.dwEip] ; Return to exception address with restored instruction (in the case of IMMEDIATE exception)
 SaveRegisterState ENDP
 END
