@@ -1,5 +1,6 @@
 #ifndef RVDBG_H
 #define RVDBG_H
+
 #include <iostream>
 #include <Windows.h>
 #include <xmmintrin.h>
@@ -8,6 +9,8 @@
 #include "exception_store.h"
 #include "thread_manager.h"
 #include <synchapi.h>
+#include <Zydis/Zydis.h>
+#pragma comment(lib, "Zydis.lib")
 #pragma comment(lib, "synchronization.lib")
 
 namespace Debugger
@@ -21,12 +24,12 @@ namespace Debugger
 	{
 #if defined _M_IX86
 		Eax, Ebx, Ecx, Edx,
-		Esi, Edi, Ebp, Esp, Eip
+		Esi, Edi, Ebp, Esp, Eip, Last
 #elif defined _M_AMD64
 		Rax, Rbx, Rcx, Rdx,
 		Rsi, Rdi, Rbp, Rsp,
 		Rip, R8, R9, R10,
-		R11, R12, R13, R14, R15
+		R11, R12, R13, R14, R15, Last
 #endif
 	} GENERAL_REGISTER;
 
@@ -42,10 +45,12 @@ namespace Debugger
 
 	typedef enum _PROCESS_STATE : DWORD
 	{
+		StepState,
 		Inclusive,
 		Exclusive,
 		Continuous
 	} PROCESS_STATE;
+
 	//
 	// Define all general purpose registers for x86 and x64
 	// Add additional fields for debugger purposes
@@ -65,8 +70,9 @@ namespace Debugger
 		DWORD dwEsp;
 		DWORD dwEip;
 		DWORD dwReturnAddress;
-		DWORD dwExceptionCode;
 		DWORD dwExceptionComparator;
+		DWORD dwExceptionCode;
+		DWORD EFlags;
 #elif defined _M_AMD64
 		DWORD64 dwRax;
 		DWORD64 dwRbx;
@@ -88,6 +94,7 @@ namespace Debugger
 		DWORD64 dwReturnAddress;
 		DWORD64 ExceptionCode;
 		DWORD64 ExceptionComparator;
+		DWORD64 RFlags;
 #endif
 	} DBG_CONTEXT_STATE;
 
@@ -155,6 +162,10 @@ namespace Debugger
 	//
 
 	void InitializeDebugInfo(DWORD InputThreadId, dio::Client* Repeater);
+	void RunDebugger();
+	int StepClassify(ZydisDecodedInstruction& Instruction, DWORD_PTR CurrentInstructionPointer);
+	void StepDebugger();
+
 }
 
 extern "C" void SaveRegisterState(DWORD, DWORD);
@@ -163,6 +174,5 @@ extern "C" Debugger::DBG_CONTEXT_STATE GlobalContext;
 extern "C" Debugger::DBG_SSE_REGISTERS SSEGlobalContext;
 extern "C" PVOID RealKiUserExceptionDispatcher;
 extern "C" PVOID RetDebuggerAddress;
-
 
 #endif
