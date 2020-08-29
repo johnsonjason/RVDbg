@@ -1,11 +1,12 @@
 #include "stdafx.h"
 #include "exception_store.h"
-
+#include <Zydis/Zydis.h>
 //
 // Record of all currently registered exceptions
 //
 
 std::vector<Debugger::EXCEPTION_BASE> Debugger::ExceptionStore;
+std::vector<Debugger::EXCEPTION_BASE> Debugger::StepPipeline;
 
 /*++ 
 
@@ -19,8 +20,15 @@ std::vector<Debugger::EXCEPTION_BASE> Debugger::ExceptionStore;
 	This is a routine that occurs a two points of time, one which is prior to an exception being handled, and one point in time that is post-handling.
 	This is why the SaveCode and UseSave optins exist within EXCEPTION_BASE
 
---*/
+Parameters:
 
+	BaseException - The exception record to apply the condition to
+
+Return Value:
+
+	None
+
+--*/
 static void SetHltCondition(Debugger::EXCEPTION_BASE& BaseException)
 {
 	DWORD OldProtection;
@@ -32,7 +40,6 @@ static void SetHltCondition(Debugger::EXCEPTION_BASE& BaseException)
 	//
 
 	*reinterpret_cast<PBYTE>(BaseException.ConditionAddress) = BaseException.UseSave ? BaseException.SaveCode : 0xF4;
-
 	VirtualProtect(reinterpret_cast<PVOID>(BaseException.ConditionAddress), 1, OldProtection, &OldProtection);
 }
 
@@ -62,6 +69,69 @@ void Debugger::HandleException(Debugger::EXCEPTION_BASE& BaseException)
 	}
 }
 
+
+
+/*++
+
+ Routine Description:
+
+	Searches for the registered step exception
+
+Parameters:
+
+	VirtualStepAddress - The registered address for virtual stepping
+	Mode - Used for querying based on linear/nonlinear records
+
+Return Value:
+
+	An integer specifying an index, -1 = an error occured or not found
+
+--*/
+int Debugger::DiscoverStepCondition(DWORD_PTR VirtualStepAddress, Debugger::EXCEPTION_STATE Mode)
+{
+	if (Mode == Debugger::EXCEPTION_STATE::VirtualLinearStep || Mode == Debugger::EXCEPTION_STATE::VirtualNonlinearStep)
+	{
+		for (std::vector<Debugger::EXCEPTION_BASE>::iterator iRecord = StepPipeline.begin(); iRecord != StepPipeline.end(); ++iRecord)
+		{
+			if (iRecord->ConditionAddress == VirtualStepAddress && iRecord->Mode == Mode)
+			{
+				return std::distance(StepPipeline.begin(), iRecord);
+			}
+		}
+		return -1;
+	}
+}
+
+/*++
+
+ Routine Description:
+
+	Registers a virtual step exception with an immediate breakpoint
+
+Parameters:
+
+	VirtualStepAddress - The "virtual step" address which will later map to an actual/logical step address
+	Mode - Specifying whether it is a linear or nonlinear step, meaning will the branch change or not
+
+--*/
+void Debugger::RegisterStepCondition(DWORD_PTR VirtualStepAddress, Debugger::EXCEPTION_STATE Mode, DWORD_PTR LogicalStepAddress)
+{
+	if (Mode != Debugger::EXCEPTION_STATE::VirtualLinearStep && Mode != Debugger::EXCEPTION_STATE::VirtualNonlinearStep)
+	{
+		return;
+	}
+
+	Debugger::EXCEPTION_BASE Record;
+	Record.UseSave = FALSE;
+	Record.SaveCode = *reinterpret_cast<PBYTE>(VirtualStepAddress);
+	Record.ConditionAddress = VirtualStepAddress;
+	Record.LogicalStepAddress = LogicalStepAddress;
+	Record.Mode = Mode;
+
+	StepPipeline.push_back(Record);
+	SetHltCondition(Record);
+}
+
 /*++
 
  Routine Description:
@@ -74,7 +144,6 @@ Parameters:
 	Mode - The condition of the exception being registered
 
 --*/
-
 void Debugger::RegisterExceptionCondition(DWORD_PTR ExceptionAddress, Debugger::EXCEPTION_STATE Mode)
 {
 	//
@@ -84,6 +153,10 @@ void Debugger::RegisterExceptionCondition(DWORD_PTR ExceptionAddress, Debugger::
 
 	Debugger::EXCEPTION_BASE Record;
 	MEMORY_BASIC_INFORMATION AddressQuery = { 0 };
+
+	//
+	// Query the exception address, to validate the memory exists
+	//
 
 	DWORD QueryResult = VirtualQuery(reinterpret_cast<PDWORD_PTR>(ExceptionAddress), &AddressQuery, sizeof(AddressQuery));
 	if (!QueryResult || AddressQuery.Protect == PAGE_NOACCESS)
@@ -158,10 +231,9 @@ Parameters:
 
 Return Value:
 
-	A true/false boolean which whether a record was discovered
+	An integer specifying an index, -1 = an error occured or not found
 
 --*/
-
 int Debugger::DiscoverExceptionCondition(DWORD_PTR ExceptionAddress, Debugger::EXCEPTION_STATE Mode)
 {
 	for (std::vector<Debugger::EXCEPTION_BASE>::iterator iRecord = ExceptionStore.begin(); iRecord != ExceptionStore.end(); ++iRecord)
@@ -171,5 +243,5 @@ int Debugger::DiscoverExceptionCondition(DWORD_PTR ExceptionAddress, Debugger::E
 			return std::distance(ExceptionStore.begin(), iRecord);
 		}
 	}
-	return 0;
+	return -1;
 }
