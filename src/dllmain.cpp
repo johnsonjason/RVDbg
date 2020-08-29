@@ -26,6 +26,7 @@ SOFTWARE. */
 #include "exception_store.h"
 #include <tuple>
 #include <iostream>
+#include <sstream>
 
 DWORD_PTR ControlRegister(std::tuple<BYTE, DWORD_PTR, DWORD_PTR>& ControlCode)
 {
@@ -61,10 +62,25 @@ DWORD_PTR ControlRegister(std::tuple<BYTE, DWORD_PTR, DWORD_PTR>& ControlCode)
 	return NULL;
 }
 
-void RunDebugger()
+std::string GetRegister(std::tuple<BYTE, DWORD_PTR, DWORD_PTR>& ControlCode)
 {
-	Debugger::DebuggerPauseCondition = false;
-	WakeByAddressSingle(&Debugger::DebuggerPauseCondition);
+#if defined _M_IX86
+	std::vector<std::string> Registers = { "Eax", "Ebx", "Ecx", "Edx", "Esi", "Edi", "Ebp", "Esp", "Eip" };
+#elif defined _M_AMD64
+	std::vector<std::string> Registers = { "Rax", "Rbx", "Rcx", "Rdx", "Rsi", "Rdi", "Rbp", "Rsp", "Rip",
+		"R8", "R9", "R10", "R11", "R12", "R13", "R14", "R15" };
+#endif
+	if (std::get<0>(ControlCode) == CTL_GET_REG)
+	{
+		for (std::size_t RegisterEnum = Debugger::GENERAL_REGISTER::Eax; RegisterEnum != Debugger::GENERAL_REGISTER::Last; RegisterEnum++)
+		{
+			if (std::get<1>(ControlCode) == RegisterEnum)
+			{
+				return Registers.at(RegisterEnum);
+			}
+		}
+	}
+	return std::string();
 }
 
 /*++
@@ -74,8 +90,16 @@ Routine Description:
 	The debug input routine, responsible for receiving input from a client (e.g. breakpoint, set symbol, etc...)
 	and acting on it or it transmits debug data to a client
 
+Parameters:
+
+	DataReserved -  A pointer passed to a newly created thread, which may point to information in the future
+
+Return Value:
+
+	Thread status/exit code
+
 --*/
-DWORD WINAPI StartDebugMonitor(LPVOID data)
+DWORD WINAPI StartDebugMonitor(LPVOID DataReserved)
 {
 	//
 	// The CurrentSymbol variable is the address to be operated on
@@ -96,7 +120,6 @@ DWORD WINAPI StartDebugMonitor(LPVOID data)
 	Debugger::InitializeDebugInfo(GetCurrentThreadId(), &DebugClient);
 
 	DWORD CurrentSymbol = 0x00000000;
-
 	std::tuple<BYTE, DWORD_PTR, DWORD_PTR> ControlCode(0, 0, 0);
 
 	while (true)
@@ -105,8 +128,10 @@ DWORD WINAPI StartDebugMonitor(LPVOID data)
 		// Receive the command tuple from the Debug Server
 		//
 
+		ControlCode = { 0, 0, 0 };
+		std::stringstream HexConverter;
 		ControlCode = DebugClient.ReceiveCommand();
-
+	
 		switch (std::get<0>(ControlCode))
 		{
 		case CTL_SET_PTR:
@@ -114,14 +139,16 @@ DWORD WINAPI StartDebugMonitor(LPVOID data)
 			break;
 
 		case CTL_GET_PTR:
-			DebugClient.SendString(std::to_string(CurrentSymbol));
+			HexConverter << std::hex << CurrentSymbol;
+			DebugClient.SendString("Debug Ptr: " + HexConverter.str());
 			break;
 
 		case CTL_SET_REG:
 			ControlRegister(ControlCode);
 			break;
 		case CTL_GET_REG:
-			DebugClient.SendString(std::to_string(ControlRegister(ControlCode)));
+			HexConverter << std::hex << ControlRegister(ControlCode);
+			DebugClient.SendString(GetRegister(ControlCode) + ": " + HexConverter.str());
 			break;
 
 		case CTL_SET_BPT:
@@ -134,8 +161,11 @@ DWORD WINAPI StartDebugMonitor(LPVOID data)
 
 			Debugger::RegisterExceptionCondition(CurrentSymbol, static_cast<Debugger::EXCEPTION_STATE>(std::get<1>(ControlCode)));
 			break;
+		case CTL_DO_STEP:
+			Debugger::StepDebugger();
+			break;
 		case CTL_DO_RUN:
-			RunDebugger();
+			Debugger::RunDebugger();
 			break;
 		default:
 			break;
