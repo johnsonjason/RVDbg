@@ -486,11 +486,9 @@ PVOID EnterDebugState()
 	if (Debugger::GetProcessState() == Debugger::PROCESS_STATE::Inclusive)
 	{
 		SuspendThreads(GetCurrentThreadId());
-		std::cout << "IP: " << std::hex << reinterpret_cast<PVOID>(GlobalContext.dwEip) << std::endl;
 	}
 	else if (Debugger::GetProcessState() == Debugger::PROCESS_STATE::Continuous)
 	{
-		std::cout << "IP: " << std::hex << reinterpret_cast<PVOID>(GlobalContext.dwEip) << std::endl;
 #ifdef _M_IX86
 		return reinterpret_cast<PVOID>(GlobalContext.dwEip);
 #elif _M_AMD64
