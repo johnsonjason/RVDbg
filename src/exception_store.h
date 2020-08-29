@@ -4,7 +4,7 @@
 #include <Windows.h>
 #include <vector>
 #include <iterator>
-
+#include <iostream>
 namespace Debugger
 {
 	//
@@ -17,7 +17,10 @@ namespace Debugger
 	{
 		ImmediateMode,
 		PageMode,
-		ModuleMode
+		ModuleMode,
+		Step,
+		VirtualLinearStep,
+		VirtualNonlinearStep
 	} EXCEPTION_STATE;
 
 	//
@@ -33,16 +36,21 @@ namespace Debugger
 		EXCEPTION_STATE Mode;
 		BYTE SaveCode;
 		bool UseSave;
+		DWORD_PTR LogicalStepAddress;
 		DWORD_PTR ConditionAddress;
 		DWORD_PTR ModulePtr;
 	} EXCEPTION_BASE;
 
 	extern std::vector<EXCEPTION_BASE> ExceptionStore;
+	extern std::vector<EXCEPTION_BASE> StepPipeline;
 
+	void RegisterStepCondition(DWORD_PTR VirtualStepAddress, Debugger::EXCEPTION_STATE Mode, DWORD_PTR LogicalStepAddress);
 	void RegisterExceptionCondition(DWORD_PTR ExceptionAddress, EXCEPTION_STATE Mode);
 	bool CloseExceptionCondition(DWORD_PTR ExceptionAddress, EXCEPTION_STATE Mode);
 	int DiscoverExceptionCondition(DWORD_PTR ExceptionAddress, EXCEPTION_STATE Mode);
+	int DiscoverStepCondition(DWORD_PTR VirtualStepAddress, Debugger::EXCEPTION_STATE Mode);
 	void HandleException(Debugger::EXCEPTION_BASE& BaseException);
+
 }
 
 #endif
