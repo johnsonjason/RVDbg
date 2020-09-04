@@ -13,7 +13,9 @@
 #define CTL_GET_XMM 5 // Get an XMM register
 #define CTL_SET_BPT 6 // Register the address of debug exception as a breakpoint with an exception condition
 #define CTL_DO_RUN 7 // Continue from debug state
+#define CTL_DO_STEP 8 // Step over
 #define CTL_STR_OUT 16 // Signal for an incoming string
+#define CTL_ERROR_CON 255 // Error with connection
 
 namespace dio
 {
