@@ -122,7 +122,12 @@ std::tuple<BYTE, DWORD_PTR, DWORD_PTR> dio::Server::ReceiveCommand()
 	const size_t ControlSize = sizeof(BYTE) + sizeof(DWORD_PTR) + sizeof(DWORD_PTR);
 	BYTE Buffer[ControlSize] = { 0 };
 
-	recv(BoundDebugger, reinterpret_cast<char*>(Buffer), sizeof(Buffer), 0);
+	DWORD Status = recv(BoundDebugger, reinterpret_cast<char*>(Buffer), sizeof(Buffer), 0);
+
+	if (Status == SOCKET_ERROR || Status == NULL)
+	{
+		return { CTL_ERROR_CON, 0, 0 };
+	}
 
 	//
 	// Parse the buffer into each individual command attribute
@@ -231,12 +236,18 @@ std::tuple<BYTE, DWORD_PTR, DWORD_PTR> dio::Client::ReceiveCommand()
 	const size_t ControlSize = sizeof(BYTE) + sizeof(DWORD_PTR) + sizeof(DWORD_PTR);
 	BYTE Buffer[ControlSize] = { 0 };
 
+	DWORD Status = recv(ClientSocket, reinterpret_cast<char*>(Buffer), sizeof(Buffer), 0);
+
+	if (Status == SOCKET_ERROR || Status == NULL)
+	{
+		return { CTL_ERROR_CON, 0, 0 };
+	}
+
 	//
 	// Parse the buffer into each individual command attribute
 	// Convert each individual command attribute into a tuple
 	//
 
-	recv(ClientSocket, reinterpret_cast<char*>(Buffer), sizeof(Buffer), 0);
 	memcpy(&ControlCode, Buffer, sizeof(ControlCode));
 	memcpy(&CommandParamOne, Buffer + sizeof(ControlCode), sizeof(CommandParamOne));
 	memcpy(&CommandParamTwo, Buffer + sizeof(ControlCode) + sizeof(CommandParamOne), sizeof(CommandParamTwo));
