@@ -167,10 +167,13 @@ DWORD WINAPI StartDebugMonitor(LPVOID DataReserved)
 		case CTL_DO_RUN:
 			Debugger::RunDebugger();
 			break;
+		case CTL_ERROR_CON:
+			return -1;
 		default:
 			break;
 		}
 	}
+	return 0;
 }
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved)
@@ -191,3 +194,4 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
     }
     return TRUE;
 }
+
